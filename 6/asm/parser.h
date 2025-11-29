@@ -1,5 +1,8 @@
 #include <fstream>
 #include <string>
+
+namespace Asm {
+
 class Parser
 {
   public:
@@ -11,10 +14,11 @@ class Parser
         Invalid
     };
 
-    struct CInstrunction {
-      std::string d;
-      std::string c;
-      std::string j;
+    struct CInstrunction
+    {
+        std::string d;
+        std::string c;
+        std::string j;
     };
 
     explicit Parser(const std::string& filepath);
@@ -32,8 +36,9 @@ class Parser
     std::string Current() const;
 
   private:
-
     std::ifstream in_;
     std::string cur_;
     std::string d_, c_, j_;
 };
+
+} // namespace Asm

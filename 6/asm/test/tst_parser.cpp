@@ -6,6 +6,8 @@
 
 #include "../parser.h"
 
+using Asm::Parser;
+
 // Test fixture for Parser tests. Creates a temporary file for each test.
 class ParserTest : public ::testing::Test
 {
