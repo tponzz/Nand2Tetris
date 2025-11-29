@@ -68,8 +68,8 @@ IsAInstruction(const std::string& line)
 static bool
 IsCInstruction(const std::string& line)
 {
-    constexpr std::string_view jumps[] = { "JGT", "JEQ", "JGE", "JLT", "JNE", "JLE", "JMP" };
-    constexpr std::string_view dests[] = { "M", "D", "DM", "A", "AM", "AD", "ADM" };
+    constexpr std::string_view jumps[] = { "null", "JGT", "JEQ", "JGE", "JLT", "JNE", "JLE", "JMP" };
+    constexpr std::string_view dests[] = { "null", "M", "D", "DM", "A", "AM", "AD", "ADM" };
     constexpr std::string_view comps[] = { "0",   "1",   "-1",  "D",   "A",   "!A",  "!D",
                                            "-D",  "-A",  "D+1", "A+1", "D-1", "A-1", "D+A",
                                            "D-A", "A-D", "D&A", "D|A", "M",   "!M",  "M+1",
