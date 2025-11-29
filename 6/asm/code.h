@@ -1,15 +1,14 @@
-#include <array>
 #include <string>
 
 namespace Asm {
 
-std::array<char, 4>
+std::string
 Dest(const std::string& mnemonic);
 
-std::array<char, 8>
+std::string
 Comp(const std::string& mnemonic);
 
-std::array<char, 4>
+std::string
 Jump(const std::string& mnemonic);
 
 } // namespace Asm

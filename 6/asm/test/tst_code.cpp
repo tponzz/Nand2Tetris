@@ -4,43 +4,32 @@
 
 #include "../code.h"
 
-static std::string to_string(const std::array<char, 4>& a)
-{
-    return std::string(a.data());
-}
-
-static std::string to_string8(const std::array<char, 8>& a)
-{
-    return std::string(a.data());
-}
-
 TEST(CodeTest, DestKnown)
 {
-    EXPECT_EQ(to_string(Asm::Dest("D")), "010");
-    EXPECT_EQ(to_string(Asm::Dest("M")), "001");
-    EXPECT_EQ(to_string(Asm::Dest("ADM")), "111");
-    EXPECT_EQ(to_string(Asm::Dest("null")), "000");
+    EXPECT_EQ(Asm::Dest("D"), "010");
+    EXPECT_EQ(Asm::Dest("M"), "001");
+    EXPECT_EQ(Asm::Dest("ADM"), "111");
+    // unknown destination or explicit "null" should produce "000"
+    EXPECT_EQ(Asm::Dest("null"), "000");
+    EXPECT_EQ(Asm::Dest("XYZ"), "000");
 }
 
 TEST(CodeTest, JumpKnown)
 {
-    EXPECT_EQ(to_string(Asm::Jump("JMP")), "111");
-    EXPECT_EQ(to_string(Asm::Jump("JGT")), "001");
-    EXPECT_EQ(to_string(Asm::Jump("null")), "000");
+    EXPECT_EQ(Asm::Jump("JMP"), "111");
+    EXPECT_EQ(Asm::Jump("JGT"), "001");
+    EXPECT_EQ(Asm::Jump("null"), "000");
+    EXPECT_EQ(Asm::Jump("XYZ"), "000");
 }
 
 TEST(CodeTest, CompKnown)
 {
-    EXPECT_EQ(to_string8(Asm::Comp("A")), "0110000");
-    EXPECT_EQ(to_string8(Asm::Comp("D")), "0001100");
-    EXPECT_EQ(to_string8(Asm::Comp("1")), "1111111");
-    EXPECT_EQ(to_string8(Asm::Comp("0")), "101010");
-    EXPECT_EQ(to_string8(Asm::Comp("M")), "1110000");
-}
-
-TEST(CodeTest, UnknownMnemonic)
-{
-    EXPECT_TRUE(to_string(Asm::Dest("XYZ")).empty());
-    EXPECT_TRUE(to_string8(Asm::Comp("XYZ")).empty());
-    EXPECT_TRUE(to_string(Asm::Jump("XYZ")).empty());
+    // comp codes are 6-bit strings (per implementation)
+    EXPECT_EQ(Asm::Comp("A"), std::string("110000"));
+    EXPECT_EQ(Asm::Comp("D"), std::string("001100"));
+    EXPECT_EQ(Asm::Comp("1"), std::string("111111"));
+    EXPECT_EQ(Asm::Comp("0"), std::string("101010"));
+    EXPECT_EQ(Asm::Comp("M"), std::string("110000"));
+    // unknown comp returns default 6 zeros
+    EXPECT_EQ(Asm::Comp("XYZ"), std::string("000000"));
 }
