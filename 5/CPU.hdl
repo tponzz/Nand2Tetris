@@ -1,0 +1,106 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/5/CPU.hdl
+/**
+ * The Hack Central Processing unit (CPU).
+ * Parses the binary code in the instruction input and executes it according to the
+ * Hack machine language specification. In the case of a C-instruction, computes the
+ * function specified by the instruction. If the instruction specifies to read a memory
+ * value, the inM input is expected to contain this value. If the instruction specifies
+ * to write a value to the memory, sets the outM output to this value, sets the addressM
+ * output to the target address, and asserts the writeM output (when writeM = 0, any
+ * value may appear in outM).
+ * If the reset input is 0, computes the address of the next instruction and sets the
+ * pc output to that value. If the reset input is 1, sets pc to 0.
+ * Note: The outM and writeM outputs are combinational: they are affected by the
+ * instruction's execution during the current cycle. The addressM and pc outputs are
+ * clocked: although they are affected by the instruction's execution, they commit to
+ * their new values only in the next cycle.
+ */
+CHIP CPU {
+
+    IN  inM[16],         // M value input  (M = contents of RAM[A])
+        instruction[16], // Instruction for execution
+        reset;           // Signals whether to re-start the current
+                         // program (reset==1) or continue executing
+                         // the current program (reset==0).
+
+    OUT outM[16],        // M value output
+        writeM,          // Write to M? 
+        addressM[15],    // Address in data memory (of M)
+        pc[15];          // address of next instruction
+
+    PARTS:
+    // 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0
+    // 1  1  1  a  c  c  c c c c d d d j j j 
+    // 0aaaaaaaaaaaaaaa
+    // it stores a part to A-Register
+    Not(in=instruction[15], out=isains);
+    Not(in=isains, out=iscins);
+    Mux16(a=aluout, b=instruction, sel=isains, out=inoralu);
+    // A-Register
+    // IN in[16], load;
+    // OUT out[16];
+    // ins[0] == 0 or ins[5] == 1
+    Or(a=isains, b=instruction[5], out=toareg);
+    // Register(in=inoralu, load=toareg, out=aregout, out[0..14]=addressM);
+    ARegister(in=inoralu, load=toareg, out=aregout, out[0..14]=addressM);
+    // writeM
+    And(a=iscins, b=instruction[3], out=writeM);
+
+    // Select A or M to input to ALU
+    And(a=instruction[12], b=iscins, out=selam);
+    Mux16(a=aregout, b=inM, sel=selam, out=aluy);
+    And(a=iscins, b=instruction[11], out=zxin);
+    And(a=iscins, b=instruction[10], out=nxin);
+    And(a=iscins, b=instruction[9], out=zyin);
+    And(a=iscins, b=instruction[8], out=nyin);
+    And(a=iscins, b=instruction[7], out=fin);
+    And(a=iscins, b=instruction[6], out=noin);
+    
+    // if (zx == 1) sets x = 0        // 16-bit constant
+    // if (nx == 1) sets x = !x       // bitwise not
+    // if (zy == 1) sets y = 0        // 16-bit constant
+    // if (ny == 1) sets y = !y       // bitwise not
+    // if (f == 1)  sets out = x + y  // integer 2's complement addition
+    // if (f == 0)  sets out = x & y  // bitwise and
+    // if (no == 1) sets out = !out   // bitwise not
+    ALU(x=dout, y=aluy, zx=zxin, nx=nxin, zy=zyin, ny=nyin, f=fin, no=noin, out=aluout, out=outM, out=din, zr=iszr, ng=isng);
+
+    // D-Register
+    // C-Inst and D-in
+    And(a=iscins, b=instruction[4], out=dload);
+    // Register(in=din, load=dload, out=dout);
+    DRegister(in=din, load=dload, out=dout);
+    // 0
+    And(a=instruction[1], b=iszr, out=zero);
+    And(a=iscins, b=zero, out=zout);
+
+    // Negative
+    And(a=instruction[2], b=isng, out=neg);
+    And(a=iscins, b=neg, out=nout);
+
+    // Positive
+    Or(a=iszr, b=isng, out=nps);
+    Not(in=nps, out=isps);
+    And(a=instruction[0], b=isps, out=pos);
+    And(a=iscins, b=pos, out=pout);
+    
+    // no cond
+    Or(a=instruction[1], b=instruction[2], out=j12);
+    Or(a=iscins, b=j12, out=nocond);
+    Not(in=nocond, out=ncout);
+
+    Or(a=zout, b=nout, out=zorn);
+    Or(a=pout, b=ncout, out=ncorp);
+    Or(a=zorn, b=ncorp, out=hascond);
+    And(a=iscins, b=hascond, out=jump);
+    Not(in=jump, out=increment);
+    // if      reset(t): out(t+1) = 0
+    // else if load(t):  out(t+1) = in(t)
+    // else if inc(t):   out(t+1) = out(t) + 1
+    // else              out(t+1) = out(t)
+    PC(in=aregout, load=jump, inc=increment, reset=reset, out[0..14]=pc);
+	//// Replace this comment with your code.
+}
