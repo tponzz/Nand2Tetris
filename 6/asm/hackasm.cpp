@@ -1,4 +1,5 @@
 // Simple example program for CMake demonstration
+#include <algorithm>
 #include <bitset>
 #include <fstream>
 #include <iostream>
@@ -6,6 +7,7 @@
 
 #include "code.h"
 #include "parser.h"
+#include "symbol_table.h"
 
 class Writer
 {
@@ -42,6 +44,12 @@ itob(const size_t addr)
     return bits.to_string();
 }
 
+bool
+IsNumber(const std::string& s)
+{
+    return std::ranges::all_of(s, [](const char c) { return std::isdigit(c) != 0; });
+}
+
 void
 Usage()
 {
@@ -64,26 +72,54 @@ main(int argc, char** argv)
     const std::string out_path = argv[2];
     Writer w{ out_path };
 
+    SymbolTable tbl;
+    size_t next_addr = 16;
+
     while (p.HasMoreLines()) {
         // 1行読み取り
         p.Advance();
 
         // 変換
         std::stringstream line;
-        if (p.InstructionType() == Asm::Parser::Instruction::A) {
-            line << "0";
-            const int addr = std::stoi(p.Current().substr(1));
-            line << itob(addr);
-        }
+        switch (p.InstructionType()) {
+            case Asm::Parser::Instruction::A: {
+                line << "0";
+                const std::string symbol = p.Symbol();
+                int addr{ 0 };
+                if (IsNumber(symbol)) {
+                    addr = std::stoi(symbol);
+                } else {
+                    if (!tbl.Contains(symbol)) {
+                        tbl.AddEntry(symbol, next_addr);
+                        next_addr++;
+                    }
 
-        if (p.InstructionType() == Asm::Parser::Instruction::C) {
-            const auto d = Asm::Dest(p.Dest());
-            const auto c = Asm::Comp(p.Comp());
-            const auto j = Asm::Jump(p.Jump());
+                    addr = tbl.GetAddress(symbol);
+                }
 
-            line << "111";
-            line << (c.find('M') != std::string::npos ? "1" : "0");
-            line << d << c << j;
+                line << itob(addr);
+            } break;
+
+            case Asm::Parser::Instruction::C: {
+                const auto d = Asm::Dest(p.Dest());
+                const auto c = Asm::Comp(p.Comp());
+                const auto j = Asm::Jump(p.Jump());
+
+                line << "111";
+                line << (c.find('M') != std::string::npos ? "1" : "0");
+                line << d << c << j;
+            } break;
+
+            case Asm::Parser::Instruction::L: {
+                const std::string symbol = p.Symbol();
+                if (!tbl.Contains(symbol)) {
+                    tbl.AddEntry(symbol, next_addr);
+                    next_addr++;
+                }
+            } break;
+
+            default:
+                break;
         }
 
         // 書き込み
