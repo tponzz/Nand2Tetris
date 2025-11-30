@@ -105,7 +105,8 @@ TEST_F(ParserTest, Symbol)
     p.Advance();
     EXPECT_EQ(p.Symbol(), "LOOP");
     p.Advance();
-    EXPECT_TRUE(p.Symbol().empty());
+    // A-instruction should return the numeric value (e.g. "123")
+    EXPECT_EQ(p.Symbol(), "123");
 }
 
 // Dest - template for C-instruction destination parsing

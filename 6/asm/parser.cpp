@@ -39,40 +39,36 @@ Extract(const std::string& line)
 }
 
 static bool
-IsLInstruction(const std::string& line)
+Validate(const std::string& s)
 {
-    bool ok = (line.front() == '(') && (line.back() == ')');
+    bool ok = s.empty() != true;
     constexpr char words[] = "1234567890abcdefghijklmnopqrstuvwxyz_.$:";
-    if (ok) {
-        for (auto&& c : line.substr(1, line.size() - 2)) {
-            const char lc = std::tolower(c);
-            ok &= std::binary_search(std::begin(words), std::end(words), lc);
-        }
+    for (auto&& c : s) {
+        const char lc = std::tolower(c);
+        ok &= std::ranges::find(words, lc) != std::end(words);
     }
 
     return ok;
+}
+
+static bool
+IsLInstruction(const std::string& line)
+{
+    bool ok = (line.front() == '(') && (line.back() == ')');
+    return ok && Validate(line.substr(1, line.size() - 2));
 }
 
 static bool
 IsAInstruction(const std::string& line)
 {
     bool ok = line.front() == '@';
-    constexpr char nums[] = "0123456789";
-    if (ok) {
-        for (auto&& c : line.substr(1)) {
-            ok &= std::binary_search(std::begin(nums), std::end(nums), c);
-        }
-    }
-
-    return ok;
+    return ok && Validate(line.substr(1));
 }
 
 static bool
 IsCInstruction(const std::string& line)
 {
-    constexpr std::string_view jumps[] = {
-        "JGT", "JEQ", "JGE", "JLT", "JNE", "JLE", "JMP"
-    };
+    constexpr std::string_view jumps[] = { "JGT", "JEQ", "JGE", "JLT", "JNE", "JLE", "JMP" };
     constexpr std::string_view dests[] = { "M", "D", "DM", "A", "AM", "AD", "ADM" };
     constexpr std::string_view comps[] = { "0",   "1",   "-1",  "D",   "A",   "!A",  "!D",
                                            "-D",  "-A",  "D+1", "A+1", "D-1", "A-1", "D+A",
@@ -102,6 +98,29 @@ IsCInstruction(const std::string& line)
     return true;
 }
 
+std::string&
+Ltrim(std::string& s)
+{
+    s.erase(s.begin(),
+            std::find_if(s.begin(), s.end(), [](unsigned char ch) { return !std::isspace(ch); }));
+    return s;
+}
+
+std::string&
+Rtrim(std::string& s)
+{
+    s.erase(
+      std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) { return !std::isspace(ch); }).base(),
+      s.end());
+    return s;
+}
+
+std::string&
+Trim(std::string& s)
+{
+    return Ltrim(Rtrim(s));
+}
+
 Parser::Parser(const std::string& filepath)
 {
     in_.open(filepath);
@@ -127,6 +146,8 @@ Parser::Advance()
     while (HasMoreLines()) {
         std::string line;
         std::getline(in_, line);
+
+        Trim(line);
 
         if (line.substr(0, 2) == "//") {
             continue;
@@ -160,6 +181,10 @@ Parser::Symbol() const
 {
     if (IsLInstruction(cur_)) {
         return cur_.substr(1, cur_.size() - 2);
+    }
+
+    if (IsAInstruction(cur_)) {
+        return cur_.substr(1);
     }
 
     return std::string();
