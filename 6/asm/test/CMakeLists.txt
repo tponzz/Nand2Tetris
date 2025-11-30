@@ -18,8 +18,10 @@ FetchContent_MakeAvailable(googletest)
 add_executable(asm_tests
     tst_parser.cpp
     tst_code.cpp
+    tst_symbol_table.cpp
     ../parser.cpp
     ../code.cpp
+    ../symbol_table.cpp
 )
 
 target_link_libraries(asm_tests PRIVATE gtest_main)
