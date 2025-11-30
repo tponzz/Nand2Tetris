@@ -57,7 +57,7 @@ static bool
 IsAInstruction(const std::string& line)
 {
     bool ok = line.front() == '@';
-    constexpr char nums[] = "1234567890";
+    constexpr char nums[] = "0123456789";
     if (ok) {
         for (auto&& c : line.substr(1)) {
             ok &= std::binary_search(std::begin(nums), std::end(nums), c);
@@ -128,7 +128,7 @@ Parser::Advance()
         std::string line;
         std::getline(in_, line);
 
-        if (line.substr(2) == "//") {
+        if (line.substr(0, 2) == "//") {
             continue;
         }
 
