@@ -67,14 +67,40 @@ main(int argc, char** argv)
     }
 
     const std::string in_path = argv[1];
-    Asm::Parser p{ in_path };
-
     const std::string out_path = argv[2];
     Writer w{ out_path };
 
     SymbolTable tbl;
     size_t next_addr = 16;
 
+    // 1st path
+    {
+        Asm::Parser p{ in_path };
+        for (size_t nol = 0; p.HasMoreLines();) {
+            p.Advance();
+
+            switch (p.InstructionType()) {
+                case Asm::Parser::Instruction::L: {
+                    const std::string symbol = p.Symbol();
+                    if (!tbl.Contains(symbol)) {
+                        tbl.AddEntry(symbol, nol);
+                    }
+                } break;
+
+                case Asm::Parser::Instruction::C:
+                case Asm::Parser::Instruction::A: {
+                    // L以外の時増やす
+                    nol++;
+                } break;
+
+                default:
+                    break;
+            }
+        }
+    }
+
+    // 2nd path
+    Asm::Parser p{ in_path };
     while (p.HasMoreLines()) {
         // 1行読み取り
         p.Advance();
@@ -101,23 +127,16 @@ main(int argc, char** argv)
             } break;
 
             case Asm::Parser::Instruction::C: {
-                const auto d = Asm::Dest(p.Dest());
-                const auto c = Asm::Comp(p.Comp());
-                const auto j = Asm::Jump(p.Jump());
+                const auto d = p.Dest();
+                const auto c = p.Comp();
+                const auto j = p.Jump();
 
                 line << "111";
                 line << (c.find('M') != std::string::npos ? "1" : "0");
-                line << d << c << j;
+                line << Asm::Comp(c) << Asm::Dest(d) << Asm::Jump(j);
             } break;
 
-            case Asm::Parser::Instruction::L: {
-                const std::string symbol = p.Symbol();
-                if (!tbl.Contains(symbol)) {
-                    tbl.AddEntry(symbol, next_addr);
-                    next_addr++;
-                }
-            } break;
-
+            case Asm::Parser::Instruction::L:
             default:
                 break;
         }
