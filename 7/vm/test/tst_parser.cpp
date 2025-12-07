@@ -78,19 +78,19 @@ TEST_F(ParserTest, CommandType)
 // Arg1 - get the first argument when the current line is a Arithmetic
 TEST_F(ParserTest, Arg1)
 {
-    writeFile("// push x\n// push 7\nlt\npush 8\neq\nor\n");
+    writeFile("// push x\n// push 7\nadd\npush local 8\neq\nor\n");
     Parser p(tmp_filename);
 
     p.Advance();
-    EXPECT_EQ(p.Arg1(), "lt");
+    EXPECT_EQ(p.Arg1(), "add");
     p.Advance();
-    EXPECT_EQ(p.Arg1(), "");
+    EXPECT_EQ(p.Arg1(), "local");
 }
 
 // Arg2 - get the second argument
 TEST_F(ParserTest, Arg2)
 {
-    writeFile("// push x\n// push 7\nlt\npush 8\neq\nor\n");
+    writeFile("// push x\n// push 7\nlt\npush local 8\neq\nor\n");
     Parser p(tmp_filename);
     p.Advance();
     EXPECT_EQ(p.Arg2(), -1);

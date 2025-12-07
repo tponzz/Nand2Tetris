@@ -135,9 +135,16 @@ Parser::CommandType() const
 std::string
 Parser::Arg1() const
 {
-    if (this->CommandType() == Cmd::Arithmetic) {
+    const Cmd cmd = this->CommandType();
+
+    if (cmd == Cmd::Arithmetic) {
         const auto cmds = SplitCmd(_cur);
         return cmds.front();
+    }
+
+    if (cmd == Cmd::Push || cmd == Cmd::Pop) {
+        const auto cmds = SplitCmd(_cur);
+        return cmds[1];
     }
 
     return std::string();
