@@ -1,3 +1,6 @@
+#ifndef VM_CODE_PARSER_HH
+#define VM_CODE_PARSER_HH
+
 #include <fstream>
 #include <string>
 
@@ -44,3 +47,5 @@ class Parser
 };
 
 }
+
+#endif
