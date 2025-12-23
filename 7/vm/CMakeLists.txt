@@ -7,7 +7,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(HEADER)
-set(SRC vm.cpp)
+set(SRC
+    vm.cpp
+    code_writer.cpp
+    parser.cpp
+)
 
 add_executable(vm ${SRC})
 
