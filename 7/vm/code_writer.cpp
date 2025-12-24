@@ -111,8 +111,8 @@ class StaticGenerator : public RamAccessGenerator
     {
         std::stringstream ss;
         Pop(ss);
-        ss << "@" << ADDR << "\n"
-           << "D=M\n";
+        ss << "@" << std::to_string(ADDR + idx) << "\n"
+           << "M=D\n";
         out << ss.str();
     }
 };
@@ -234,7 +234,9 @@ class NegGenerator : public ArithmeticGenerator
         Pop2DReg(ss);
         ss << "@SP\n"
            << "A=M\n"
-           << "M=-D\n";
+           << "M=-D\n"
+           << "@SP\n"
+           << "M=M+1\n";
         out << ss.str();
     };
 };
@@ -294,7 +296,9 @@ class NotGenerator : public ArithmeticGenerator
         Pop2DReg(ss);
         ss << "@SP\n"
            << "A=M\n"
-           << "M=!D\n";
+           << "M=!D\n"
+           << "@SP\n"
+           << "M=M+1\n";
         out << ss.str();
     };
 };
