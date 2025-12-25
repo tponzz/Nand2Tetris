@@ -1,4 +1,5 @@
 #include "code_writer.h"
+#include <format>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -195,6 +196,43 @@ class ArithmeticGenerator
             << "A=M\n"
             << "D=M\n";
     }
+
+    void Sub(std::stringstream& out)
+    {
+        out << "@SP\n"
+            << "M=M-1\n"
+            << "A=M\n"
+            << "D=M-D\n";
+    }
+
+    void PushFalse(std::stringstream& out)
+    {
+        out << "@SP\n"
+            << "A=M\n"
+            << "M=0\n";
+    }
+
+    void PushTrue(const std::string& jump, const int id, std::stringstream& out)
+    {
+        auto&& true_label      = std::format("({}_{}_{})", jump, "TRUE", id);
+        auto&& end_label       = std::format("({}_{}_{})", jump, "END", id);
+        auto&& call_true_label = std::format("@{}_{}_{}", jump, "TRUE", id);
+        auto&& call_end_label  = std::format("@{}_{}_{}", jump, "END", id);
+
+        out << call_true_label << "\n"
+            << "D;" + jump << "\n"
+            << call_end_label << "\n"
+            << "0;JMP\n";
+
+        out << true_label << "\n"
+            << "@SP\n"
+            << "A=M\n"
+            << "M=-1\n";
+
+        out << end_label << "\n"
+            << "@SP\n"
+            << "M=M+1\n";
+    }
 };
 
 // add  : x+y
@@ -244,19 +282,64 @@ class NegGenerator : public ArithmeticGenerator
 // eq   : x == y
 class EqGenerator : public ArithmeticGenerator
 {
-    virtual void WriteArithmetic(std::ofstream& out) final {};
+    virtual void WriteArithmetic(std::ofstream& out) final
+    {
+        static int id = 0;
+
+        std::stringstream ss;
+        // pop y into D
+        Pop2DReg(ss);
+        // pop x and compute D = x - y
+        Sub(ss);
+        // default: push false (0)
+        PushFalse(ss);
+        // if equal, set true (-1)
+        PushTrue("JEQ", id++, ss);
+
+        out << ss.str();
+    };
 };
 
 // gt   : x > y
 class GtGenerator : public ArithmeticGenerator
 {
-    virtual void WriteArithmetic(std::ofstream& out) final {};
+    virtual void WriteArithmetic(std::ofstream& out) final
+    {
+        static int id = 0;
+
+        std::stringstream ss;
+        // pop y into D
+        Pop2DReg(ss);
+        // pop x and compute D = x - y
+        Sub(ss);
+        // default: push false (0)
+        PushFalse(ss);
+        // if greater, set true (-1)
+        PushTrue("JGT", id++, ss);
+
+        out << ss.str();
+    };
 };
 
 // lt   : x < y
 class LtGenerator : public ArithmeticGenerator
 {
-    virtual void WriteArithmetic(std::ofstream& out) final {};
+    virtual void WriteArithmetic(std::ofstream& out) final
+    {
+        static int id = 0;
+
+        std::stringstream ss;
+        // pop y into D
+        Pop2DReg(ss);
+        // pop x and compute D = x - y
+        Sub(ss);
+        // default: push false (0)
+        PushFalse(ss);
+        // if less, set true (-1)
+        PushTrue("JLT", id++, ss);
+
+        out << ss.str();
+    };
 };
 
 // and  : x & y
