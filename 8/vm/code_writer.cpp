@@ -32,18 +32,18 @@ void
 RamAccessGenerator::Pop(std::ostream& out)
 {
     out << "@SP\n"
-        << "AM=M-1\n"
-        << "D=M\n";
+           "AM=M-1\n"
+           "D=M\n";
 }
 
 void
 RamAccessGenerator::Push(std::ostream& out)
 {
     out << "@SP\n"
-        << "A=M\n"
-        << "M=D\n"
-        << "@SP\n"
-        << "M=M+1\n";
+           "A=M\n"
+           "M=D\n"
+           "@SP\n"
+           "M=M+1\n";
 }
 
 class StandardSegGenerator : public RamAccessGenerator
@@ -56,10 +56,10 @@ class StandardSegGenerator : public RamAccessGenerator
     {
         // push argument 2
         // push ARG[2] to stack
-        out << "@" << idx << "\n";
-        out << "D=A\n";
-        out << "@" + _seg + "\n";
-        out << "A=D+M\n"
+        out << "@" << idx << "\n"
+            << "D=A\n"
+            << "@" + _seg + "\n"
+            << "A=D+M\n"
                "D=M\n";
 
         Push(out);
@@ -70,8 +70,8 @@ class StandardSegGenerator : public RamAccessGenerator
         // pop argument 2
         // stack to ARG[2]
         Pop(out); // D = *SP
-        out << "@" << _seg << "\n";
-        out << "A=M\n";
+        out << "@" << _seg << "\n"
+            << "A=M\n";
         while (idx--) {
             out << "A=A+1\n";
         }
@@ -123,8 +123,8 @@ class PointerGenerator : public RamAccessGenerator
   public:
     virtual void WritePush(std::ofstream& out, std::size_t idx) override
     {
-        out << "@" << SEG[idx] << "\n";
-        out << "D=M\n";
+        out << "@" << SEG[idx] << "\n"
+            << "D=M\n";
         Push(out);
     }
 
@@ -133,8 +133,8 @@ class PointerGenerator : public RamAccessGenerator
         // pop this 6
         // pop that 2
         Pop(out);
-        out << "@" << SEG[idx] << "\n";
-        out << "M=D\n";
+        out << "@" << SEG[idx] << "\n"
+            << "M=D\n";
     }
 };
 
@@ -181,22 +181,22 @@ class ArithmeticGenerator
     void Pop2DReg(std::ostream& out)
     {
         out << "@SP\n"
-            << "AM=M-1\n"
-            << "D=M\n";
+               "AM=M-1\n"
+               "D=M\n";
     }
 
     void Sub(std::ostream& out)
     {
         out << "@SP\n"
-            << "AM=M-1\n"
-            << "D=M-D\n";
+               "AM=M-1\n"
+               "D=M-D\n";
     }
 
     void PushFalse(std::ostream& out)
     {
         out << "@SP\n"
-            << "A=M\n"
-            << "M=0\n";
+               "A=M\n"
+               "M=0\n";
     }
 
     void PushTrue(const std::string& jump, const int id, std::ostream& out)
@@ -213,12 +213,12 @@ class ArithmeticGenerator
 
         out << true_label << "\n"
             << "@SP\n"
-            << "A=M\n"
-            << "M=-1\n";
+               "A=M\n"
+               "M=-1\n";
 
         out << end_label << "\n"
             << "@SP\n"
-            << "M=M+1\n";
+               "M=M+1\n";
     }
 };
 
@@ -229,8 +229,8 @@ class AddGenerator : public ArithmeticGenerator
     {
         Pop2DReg(out);
         out << "@SP\n"
-            << "A=M-1\n"
-            << "M=D+M\n";
+               "A=M-1\n"
+               "M=D+M\n";
     };
 };
 
@@ -241,8 +241,8 @@ class SubGenerator : public ArithmeticGenerator
     {
         Pop2DReg(out);
         out << "@SP\n"
-            << "A=M-1\n"
-            << "M=M-D\n";
+               "A=M-1\n"
+               "M=M-D\n";
     };
 };
 
@@ -253,10 +253,10 @@ class NegGenerator : public ArithmeticGenerator
     {
         Pop2DReg(out);
         out << "@SP\n"
-            << "A=M\n"
-            << "M=-D\n"
-            << "@SP\n"
-            << "M=M+1\n";
+               "A=M\n"
+               "M=-D\n"
+               "@SP\n"
+               "M=M+1\n";
     };
 };
 
@@ -321,8 +321,8 @@ class AndGenerator : public ArithmeticGenerator
     {
         Pop2DReg(out);
         out << "@SP\n"
-            << "A=M-1\n"
-            << "M=D&M\n";
+               "A=M-1\n"
+               "M=D&M\n";
     };
 };
 
@@ -333,8 +333,8 @@ class OrGenerator : public ArithmeticGenerator
     {
         Pop2DReg(out);
         out << "@SP\n"
-            << "A=M-1\n"
-            << "M=D|M\n";
+               "A=M-1\n"
+               "M=D|M\n";
     };
 };
 
@@ -345,10 +345,10 @@ class NotGenerator : public ArithmeticGenerator
     {
         Pop2DReg(out);
         out << "@SP\n"
-            << "A=M\n"
-            << "M=!D\n"
-            << "@SP\n"
-            << "M=M+1\n";
+               "A=M\n"
+               "M=!D\n"
+               "@SP\n"
+               "M=M+1\n";
     };
 };
 
@@ -424,8 +424,8 @@ CodeWriter::WriteIf(const std::string& label)
 {
 
     _out << "@SP\n"
-         << "AM=M-1\n"
-         << "D=M\n"
+            "AM=M-1\n"
+            "D=M\n"
          << "@" << label << '\n'
          << "D;JNE\n";
 }
@@ -436,10 +436,10 @@ CodeWriter::WriteFuntion(const std::string& function_name, const int n_vars)
     _out << std::format("({})\n", function_name);
     for (int i = 0; i < n_vars; i++) {
         _out << "@SP\n"
-             << "A=M\n"
-             << "M=0\n"
-             << "@SP\n"
-             << "M=M+1\n";
+                "A=M\n"
+                "M=0\n"
+                "@SP\n"
+                "M=M+1\n";
     }
 }
 
@@ -471,16 +471,16 @@ CodeWriter::WriteCall(const std::string& function_name, const int n_vars)
 
     // 関数内のデータに上書き
     // ARG = SP-5-nArgs
-    _out << "@SP\n";
-    _out << "D=M\n";
+    _out << "@SP\n"
+            "D=M\n";
     for (size_t i = 0; i < 5 + n_vars; i++) {
         _out << "D=D-1\n";
     }
     arg_gen.WritePush(_out, 0);
 
     // LCL = SP
-    _out << "@SP\n";
-    _out << "D=M\n";
+    _out << "@SP\n"
+            "D=M\n";
     lcl_gen.WritePush(_out, 0);
 
     // goto f
@@ -492,7 +492,8 @@ CodeWriter::WriteCall(const std::string& function_name, const int n_vars)
 
 void
 CodeWriter::WriteReturn()
-{ // ★ 定数を引きたいときはアドレス値を使う
+{
+    // ★ 定数を引きたいときはアドレス値を使う
     //   @5
     //   D=D-A (=> D-=5)
     // ★ R13-R15 VM変換器の生成コードに変数が必要な場合、これらのレジスタを使用可能（本書p.175）
