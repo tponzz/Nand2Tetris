@@ -17,6 +17,9 @@ static std::string_view RETURN{ "return" };
 static std::string_view LABEL{ "label" };
 static std::string_view GOTO{ "goto" };
 
+static constexpr std::string_view DELIMS{ "\n\r" };
+static constexpr std::string_view SPACES{ " \t" };
+
 static std::vector<std::string>
 SplitCmd(const std::string& cmd)
 {
@@ -45,13 +48,13 @@ Trim(std::string& s)
 {
     // trim left side
     if (!s.empty()) {
-        const auto t_space_end = s.find_first_not_of(" \t");
+        const auto t_space_end = s.find_first_not_of(SPACES);
         s.erase(0, t_space_end);
     }
 
     if (!s.empty()) {
         // trim right side
-        const auto b_space_start = s.find_last_not_of(" \t");
+        const auto b_space_start = s.find_last_not_of(SPACES);
         s.erase(b_space_start + 1);
     }
 }
@@ -82,8 +85,6 @@ Parser::HasMoreLines()
 void
 Parser::Advance()
 {
-    constexpr std::string_view delims{ "\n\r" };
-    constexpr std::string_view spaces{ " \t" };
 
     char c;
     std::string line;
@@ -96,7 +97,7 @@ Parser::Advance()
                 _in.get();
             }
 
-            if (delims.contains(c)) {
+            if (DELIMS.contains(c)) {
                 break;
             }
 
