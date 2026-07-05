@@ -35,6 +35,7 @@ SplitCmd(const std::string& cmd)
     for (const auto token : cmd | std::views::split(' ')) {
         if (t.cmd.empty()) {
             t.cmd = std::string{ token.begin(), token.end() };
+            continue;
         }
 
         t.args.push_back(std::string{ token.begin(), token.end() });

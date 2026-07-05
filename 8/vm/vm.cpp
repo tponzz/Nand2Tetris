@@ -69,6 +69,9 @@ main(int argc, char const* argv[])
             case Vm::Parser::Cmd::Return: {
                 writer.WriteReturn();
             } break;
+            case Vm::Parser::Cmd::Invalid: {
+                std::cerr << "Invalid command: " << static_cast<int>(type) << "\n";
+            } break;
 
             default:
                 break;
