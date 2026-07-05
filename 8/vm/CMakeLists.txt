@@ -14,6 +14,7 @@ set(SRC
 )
 
 add_executable(vm ${SRC})
+target_compile_options(vm PRIVATE -Wall -Wextra -Wswitch-enum)
 
 add_subdirectory(test)
 enable_testing()

@@ -1,8 +1,10 @@
 #include "parser.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <iostream>
-#include <sstream>
+#include <ranges>
+#include <string>
 #include <vector>
 
 namespace Vm {
@@ -20,19 +22,24 @@ static std::string_view GOTO{ "goto" };
 static constexpr std::string_view DELIMS{ "\n\r" };
 static constexpr std::string_view SPACES{ " \t" };
 
-static std::vector<std::string>
+struct CmdTokens
+{
+    std::string cmd;
+    std::vector<std::string> args;
+};
+
+static CmdTokens
 SplitCmd(const std::string& cmd)
 {
-    std::vector<std::string> ret;
-    std::stringstream ss;
-    std::string word;
+    CmdTokens t{};
+    for (const auto token : cmd | std::views::split(' ')) {
+        if (t.cmd.empty()) {
+            t.cmd = std::string{ token.begin(), token.end() };
+        }
 
-    ss << cmd;
-    while (std::getline(ss, word, ' ')) {
-        ret.push_back(word);
+        t.args.push_back(std::string{ token.begin(), token.end() });
     }
-
-    return ret;
+    return t;
 }
 
 static void
@@ -121,45 +128,41 @@ Parser::Advance()
 Parser::Cmd
 Parser::CommandType() const
 {
-    std::stringstream ss;
-    ss << _cur;
+    auto tokens = SplitCmd(_cur);
 
-    std::string cmd;
-    ss >> cmd;
-
-    if (std::ranges::contains(ARITHMETICS, cmd)) {
+    if (std::ranges::contains(ARITHMETICS, tokens.cmd)) {
         return Cmd::Arithmetic;
     }
 
-    if (cmd == PUSH) {
+    if (tokens.cmd == PUSH) {
         return Cmd::Push;
     }
 
-    if (cmd == POP) {
+    if (tokens.cmd == POP) {
         return Cmd::Pop;
     }
 
-    if (cmd == LABEL) {
+    if (tokens.cmd == LABEL) {
         return Cmd::Label;
     }
 
-    if (cmd == FUNCTION) {
+    if (tokens.cmd == FUNCTION) {
         return Cmd::Function;
     }
 
-    if (cmd == GOTO) {
+    if (tokens.cmd == GOTO) {
         return Cmd::Goto;
     }
 
-    if (cmd == RETURN) {
+    if (tokens.cmd == RETURN) {
         return Cmd::Return;
     }
 
-    if (cmd == IF) {
+    if (tokens.cmd == IF) {
         return Cmd::If;
     }
 
-    if (cmd == CALL) {
+    if (tokens.cmd == CALL) {
         return Cmd::Call;
     }
 
@@ -172,17 +175,23 @@ Parser::Arg1() const
     const Cmd cmd = this->CommandType();
     switch (cmd) {
         case Cmd::Arithmetic: {
-            const auto cmds = SplitCmd(_cur);
-            return cmds.front();
+            const auto tokens = SplitCmd(_cur);
+            return tokens.cmd;
         }
         case Cmd::Push:
         case Cmd::Pop:
         case Cmd::Label:
         case Cmd::Goto:
         case Cmd::If: {
-            const auto cmds = SplitCmd(_cur);
-            return cmds[1];
+            const auto tokens = SplitCmd(_cur);
+            return tokens.args[0];
         }
+        case Cmd::Call:
+        case Cmd::Return:
+        case Cmd::Function:
+        case Cmd::Invalid: {
+            std::cerr << "Invalid command: " << this->_cur << "\n";
+        } break;
         default:
             break;
     }
@@ -193,11 +202,10 @@ Parser::Arg1() const
 int
 Parser::Arg2() const
 {
-    constexpr Cmd HAS_ARG2[]{ Cmd::Push, Cmd::Pop, Cmd::Function, Cmd::Call };
-
-    if (std::ranges::find(HAS_ARG2, this->CommandType()) != std::end(HAS_ARG2)) {
-        const auto cmds = SplitCmd(_cur);
-        return std::stoi(cmds.back());
+    const auto tokens = SplitCmd(_cur);
+    const size_t len  = tokens.args.size();
+    if (len == 2UL) {
+        return static_cast<int>(len);
     }
 
     return -1;

@@ -60,6 +60,15 @@ main(int argc, char const* argv[])
             case Vm::Parser::Cmd::If: {
                 writer.WriteIf(p.Arg1());
             } break;
+            case Vm::Parser::Cmd::Function: {
+                writer.WriteFuntion(p.Arg1(), p.Arg2());
+            } break;
+            case Vm::Parser::Cmd::Call: {
+                writer.WriteCall(p.Arg1(), p.Arg2());
+            } break;
+            case Vm::Parser::Cmd::Return: {
+                writer.WriteReturn();
+            } break;
 
             default:
                 break;
