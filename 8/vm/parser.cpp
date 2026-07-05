@@ -204,9 +204,8 @@ int
 Parser::Arg2() const
 {
     const auto tokens = SplitCmd(_cur);
-    const size_t len  = tokens.args.size();
-    if (len == 2UL) {
-        return static_cast<int>(len);
+    if (tokens.args.size() == 2UL) {
+        return std::stoi(tokens.args.back());
     }
 
     return -1;
