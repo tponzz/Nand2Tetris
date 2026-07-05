@@ -1,7 +1,6 @@
 #include "parser.h"
 
 #include <algorithm>
-#include <cstddef>
 #include <iostream>
 #include <ranges>
 #include <string>
@@ -175,7 +174,8 @@ Parser::Arg1() const
 {
     const Cmd cmd = this->CommandType();
     switch (cmd) {
-        case Cmd::Arithmetic: {
+        case Cmd::Arithmetic:
+        case Cmd::Return: {
             const auto tokens = SplitCmd(_cur);
             return tokens.cmd;
         }
@@ -183,13 +183,12 @@ Parser::Arg1() const
         case Cmd::Pop:
         case Cmd::Label:
         case Cmd::Goto:
-        case Cmd::If: {
-            const auto tokens = SplitCmd(_cur);
-            return tokens.args[0];
-        }
+        case Cmd::If:
         case Cmd::Call:
-        case Cmd::Return:
-        case Cmd::Function:
+        case Cmd::Function: {
+            const auto tokens = SplitCmd(_cur);
+            return tokens.args.front();
+        } break;
         case Cmd::Invalid: {
             std::cerr << "Invalid command: " << this->_cur << "\n";
         } break;

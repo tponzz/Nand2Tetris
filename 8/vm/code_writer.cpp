@@ -402,7 +402,14 @@ CodeWriter::WritePushPop(Parser::Cmd cmd, const std::string& seg, const size_t i
             gen->WritePop(_out, idx);
         } break;
 
-        default:
+        case Parser::Cmd::Call:
+        case Parser::Cmd::Function:
+        case Parser::Cmd::Return:
+        case Parser::Cmd::Arithmetic:
+        case Parser::Cmd::Goto:
+        case Parser::Cmd::If:
+        case Parser::Cmd::Label:
+        case Parser::Cmd::Invalid:
             break;
     }
 }
@@ -416,7 +423,7 @@ CodeWriter::WriteLabel(const std::string& label)
 void
 CodeWriter::WriteGoto(const std::string& label)
 {
-    _out << '@' << label << '\n' << "0; JMP\n";
+    _out << '@' << label << '\n' << "0;JMP\n";
 }
 
 void
@@ -444,7 +451,7 @@ CodeWriter::WriteFuntion(const std::string& function_name, const int n_vars)
 }
 
 std::string
-MakeReturnSymbol(const std::string& filename, const std::string& label, const size_t idx)
+MakeReturnSymbol(const std::string& filename, const std::string& label, const int idx)
 {
     return std::format("{}.{}$ret.{}", filename, label, idx);
 }
@@ -452,42 +459,52 @@ MakeReturnSymbol(const std::string& filename, const std::string& label, const si
 void
 CodeWriter::WriteCall(const std::string& function_name, const int n_vars)
 {
+    // call count in runtime
+    static int idx = 0;
+
     // push return address
-    static size_t idx = 0;
     const auto symbol = MakeReturnSymbol(_filename, function_name, idx);
-    // todo
+    _out << "@" << symbol << "\n"
+         << "D=A\n";
+    RamAccessGenerator::Push(_out);
 
     // push LCL ARG THIS THAT
     // 親の値を保存しておく
-    auto lcl_gen  = StandardSegGenerator("LCL");
-    auto arg_gen  = StandardSegGenerator("ARG");
-    auto this_gen = StandardSegGenerator("THIS");
-    auto that_gen = StandardSegGenerator("THAT");
+    auto push_label = [](std::ofstream& out, const std::string& label) {
+        out << "@" << label << "\n"
+            << "D=M\n";
+        RamAccessGenerator::Push(out);
+    };
 
-    lcl_gen.WritePush(_out, 0);
-    arg_gen.WritePush(_out, 0);
-    this_gen.WritePush(_out, 0);
-    that_gen.WritePush(_out, 0);
+    push_label(_out, "LCL");
+    push_label(_out, "ARG");
+    push_label(_out, "THIS");
+    push_label(_out, "THAT");
 
     // 関数内のデータに上書き
     // ARG = SP-5-nArgs
-    _out << "@SP\n"
-            "D=M\n";
-    for (size_t i = 0; i < 5 + n_vars; i++) {
-        _out << "D=D-1\n";
-    }
-    arg_gen.WritePush(_out, 0);
+    _out << "@" << 5 + n_vars
+         << "\n"
+            "D=A\n"
+            "@SP\n"
+            "D=M-D\n"
+            "@ARG\n"
+            "M=D\n";
 
     // LCL = SP
     _out << "@SP\n"
-            "D=M\n";
-    lcl_gen.WritePush(_out, 0);
+            "D=M\n"
+            "@LCL\n"
+            "M=D\n";
 
     // goto f
     this->WriteGoto(function_name);
 
     // (return symbol)
-    _out << '(' << MakeReturnSymbol(_filename, function_name, idx) << ')';
+    _out << '(' << MakeReturnSymbol(_filename, function_name, idx) << ")\n";
+
+    // Increment for next call
+    idx++;
 }
 
 void
@@ -501,7 +518,7 @@ CodeWriter::WriteReturn()
     // LCL = HEAD = SP
     // frame: R13 = LCL
     _out << "@LCL\n"
-            "D=A\n"
+            "D=M\n"
             "@R13\n"
             "M=D\n";
 
@@ -517,13 +534,14 @@ CodeWriter::WriteReturn()
 
     // *ARG=pop() (= *ARG=D)
     _out << "@ARG\n"
+            "A=M\n"
             "M=D\n";
 
     // SP = ARG+1
     _out << "@ARG\n"
-            "D=A\n"
+            "D=M+1\n"
             "@SP\n"
-            "M=D+1\n";
+            "M=D\n";
 
     // THAT=*(frame-1)
     // THIS=*(frame-2)
