@@ -1,5 +1,5 @@
 ---
-name: cpp-best-practices
+name: cpp-best-practice
 description: Use whenever C++ source code is written, read, or reviewed, in any context — not limited to learning sessions. Surfaces violations of modern C++ idioms and Core-Guidelines-style practices as concise, severity-labeled findings for the calling context to act on — teach-programming turns them into hints during learning sessions, otherwise state them directly. Do not rewrite the user's code unless explicitly asked for a fix.
 ---
 
