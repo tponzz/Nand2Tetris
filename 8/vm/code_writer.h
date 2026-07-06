@@ -1,16 +1,19 @@
 #ifndef VM_CODE_WRITER_HH
 
 #include <fstream>
+#include <map>
+#include <memory>
 #include <string>
 
 #include "parser.h"
 
 namespace Vm {
 
+class RamAccessGenerator;
 class CodeWriter
 {
   public:
-    CodeWriter(const std::string& filepath);
+    CodeWriter(const std::string& out_path);
     ~CodeWriter();
 
     void SetFileName(const std::string& filename);
@@ -29,6 +32,7 @@ class CodeWriter
   private:
     std::ofstream _out;
     std::string _filename;
+    std::map<std::string, std::shared_ptr<RamAccessGenerator>> _stack_gens;
 };
 
 } // namespace Vm

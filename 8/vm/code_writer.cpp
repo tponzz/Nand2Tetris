@@ -3,7 +3,6 @@
 
 #include <cstddef>
 #include <cstdlib>
-#include <filesystem>
 #include <format>
 #include <ios>
 #include <iostream>
@@ -103,12 +102,15 @@ class ConstantGenerator : public RamAccessGenerator
 
 class StaticGenerator : public RamAccessGenerator
 {
-    static constexpr int ADDR = 16;
+    const std::string& _filename;
 
   public:
+    StaticGenerator(const std::string& filename)
+      : _filename(filename) {};
+
     virtual void WritePush(std::ofstream& out, std::size_t idx) override
     {
-        out << "@" << (ADDR + idx) << "\n"
+        out << "@" << _filename + "." << idx << "\n"
             << "D=M\n";
         Push(out);
     };
@@ -116,7 +118,7 @@ class StaticGenerator : public RamAccessGenerator
     virtual void WritePop(std::ofstream& out, std::size_t idx) override
     {
         Pop(out);
-        out << "@" << (ADDR + idx) << "\n"
+        out << "@" << _filename + "." << idx << "\n"
             << "M=D\n";
     }
 };
@@ -163,17 +165,6 @@ class TempGenerator : public RamAccessGenerator
         out << "@" << (idx + BASE) << "\n"
             << "M=D\n";
     }
-};
-
-static const std::map<std::string, std::shared_ptr<RamAccessGenerator>> STACK_GENS{
-    { "argument",  std::make_shared<StandardSegGenerator>("ARG") },
-    {    "local",  std::make_shared<StandardSegGenerator>("LCL") },
-    {     "this", std::make_shared<StandardSegGenerator>("THIS") },
-    {     "that", std::make_shared<StandardSegGenerator>("THAT") },
-    { "constant",          std::make_shared<ConstantGenerator>() },
-    {   "static",            std::make_shared<StaticGenerator>() },
-    {  "pointer",           std::make_shared<PointerGenerator>() },
-    {     "temp",              std::make_shared<TempGenerator>() },
 };
 
 class ArithmeticGenerator
@@ -369,18 +360,24 @@ static const std::map<std::string, std::shared_ptr<ArithmeticGenerator>> ARITH_G
     { "not", std::make_shared<NotGenerator>() },
 };
 
-CodeWriter::CodeWriter(const std::string& filepath)
+CodeWriter::CodeWriter(const std::string& out_path)
 {
     // open output file
     try {
-        _out.open(filepath, std::ios::out | std::ios::trunc);
+        _out.open(out_path, std::ios::out | std::ios::trunc);
     } catch (const std::exception& e) {
         std::cerr << e.what() << '\n';
         std::exit(1);
     }
 
-    namespace fs = std::filesystem;
-    this->SetFileName(fs::path(filepath).stem());
+    _stack_gens.emplace("argument", std::make_shared<StandardSegGenerator>("ARG"));
+    _stack_gens.emplace("local", std::make_shared<StandardSegGenerator>("LCL"));
+    _stack_gens.emplace("this", std::make_shared<StandardSegGenerator>("THIS"));
+    _stack_gens.emplace("that", std::make_shared<StandardSegGenerator>("THAT"));
+    _stack_gens.emplace("constant", std::make_shared<ConstantGenerator>());
+    _stack_gens.emplace("static", std::make_shared<StaticGenerator>(_filename));
+    _stack_gens.emplace("pointer", std::make_shared<PointerGenerator>());
+    _stack_gens.emplace("temp", std::make_shared<TempGenerator>());
 
     // boot strap code
     _out << "@256\n"
@@ -412,12 +409,12 @@ CodeWriter::WritePushPop(Parser::Cmd cmd, const std::string& seg, const size_t i
 {
     switch (cmd) {
         case Parser::Cmd::Push: {
-            auto&& gen = STACK_GENS.at(seg);
+            auto&& gen = _stack_gens.at(seg);
             gen->WritePush(_out, idx);
         } break;
 
         case Parser::Cmd::Pop: {
-            auto&& gen = STACK_GENS.at(seg);
+            auto&& gen = _stack_gens.at(seg);
             gen->WritePop(_out, idx);
         } break;
 
@@ -472,6 +469,10 @@ CodeWriter::WriteFuntion(const std::string& function_name, const int n_vars)
 std::string
 MakeReturnSymbol(const std::string& filename, const std::string& label, const int idx)
 {
+    if (filename.empty()) {
+        return std::format("{}$ret.{}", label, idx);
+    }
+
     return std::format("{}.{}$ret.{}", filename, label, idx);
 }
 

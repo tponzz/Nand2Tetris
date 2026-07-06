@@ -1,4 +1,3 @@
-#include <algorithm>
 #include <filesystem>
 #include <iostream>
 #include <ranges>
@@ -51,6 +50,13 @@ GetVmFiles(const std::string& path)
     return paths;
 }
 
+static std::string
+GetStem(const std::string& path)
+{
+    namespace fs = std::filesystem;
+    return fs::path(path).stem();
+}
+
 int
 main(int argc, char const* argv[])
 {
@@ -69,9 +75,15 @@ main(int argc, char const* argv[])
     }
 
     std::string out_path = PathToFilename(in_path).append(".asm");
+
+    // a single CodeWriter for the whole run
     Vm::CodeWriter writer{ out_path };
+
     for (auto&& path : target_vm) {
         Vm::Parser p{ path };
+
+        // for static variables
+        writer.SetFileName(GetStem(path));
 
         std::cout << "in: " << path << std::endl;
         while (p.HasMoreLines()) {
