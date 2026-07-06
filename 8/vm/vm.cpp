@@ -1,10 +1,14 @@
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
+#include <ranges>
+#include <string>
+#include <vector>
 
 #include "code_writer.h"
 #include "parser.h"
 
-void
+static void
 Usage()
 {
     std::cout << "Usage: vm <input.vm>\n";
@@ -12,13 +16,39 @@ Usage()
 }
 
 // path/to/file.ext -> path/to/file
-std::string
+static std::string
 PathToFilename(const std::string& path)
 {
     namespace fs = std::filesystem;
-    fs::path abs = fs::relative(path);
+    fs::path rel = fs::relative(path);
 
-    return abs.parent_path() / abs.stem();
+    if (fs::is_directory(rel)) {
+        return rel / *(--rel.end());
+    } else {
+        return rel.parent_path() / rel.stem();
+    }
+}
+
+static std::vector<std::string>
+GetVmFiles(const std::string& path)
+{
+    namespace fs = std::filesystem;
+    fs::path rel = fs::relative(path);
+
+    std::vector<std::string> paths{};
+    if (fs::is_directory(rel)) {
+        auto is_vmfile = [](auto&& f) { return f.path().extension() == ".vm"; };
+
+        for (auto vm_file : fs::directory_iterator{ rel } | std::views::filter(is_vmfile)) {
+            paths.push_back(vm_file.path());
+        }
+    } else {
+        if (rel.extension() == ".vm") {
+            paths.push_back(rel);
+        }
+    }
+
+    return paths;
 }
 
 int
@@ -29,55 +59,62 @@ main(int argc, char const* argv[])
         return -1;
     }
 
-    std::string vm_txt  = argv[1];
-    std::string asm_txt = PathToFilename(vm_txt).append(".asm");
+    std::string in_path = argv[1];
 
-    std::cout << "vm" << std::endl;
-    std::cout << "in: " << vm_txt << std::endl;
-    std::cout << "out: " << asm_txt << std::endl;
+    // dir or .vm
+    std::vector<std::string> target_vm = GetVmFiles(in_path);
+    if (target_vm.size() == 0) {
+        Usage();
+        return -1;
+    }
 
-    Vm::Parser p{ vm_txt };
-    Vm::CodeWriter writer{ asm_txt };
+    std::string out_path = PathToFilename(in_path).append(".asm");
+    Vm::CodeWriter writer{ out_path };
+    for (auto&& path : target_vm) {
+        Vm::Parser p{ path };
 
-    while (p.HasMoreLines()) {
-        p.Advance();
+        std::cout << "in: " << path << std::endl;
+        while (p.HasMoreLines()) {
+            p.Advance();
 
-        const auto type = p.CommandType();
-        switch (type) {
-            case Vm::Parser::Cmd::Pop:
-            case Vm::Parser::Cmd::Push: {
-                writer.WritePushPop(type, p.Arg1(), p.Arg2());
-            } break;
-            case Vm::Parser::Cmd::Arithmetic: {
-                writer.WriteArithmetic(p.Arg1());
-            } break;
-            case Vm::Parser::Cmd::Label: {
-                writer.WriteLabel(p.Arg1());
-            } break;
-            case Vm::Parser::Cmd::Goto: {
-                writer.WriteGoto(p.Arg1());
-            } break;
-            case Vm::Parser::Cmd::If: {
-                writer.WriteIf(p.Arg1());
-            } break;
-            case Vm::Parser::Cmd::Function: {
-                writer.WriteFuntion(p.Arg1(), p.Arg2());
-            } break;
-            case Vm::Parser::Cmd::Call: {
-                writer.WriteCall(p.Arg1(), p.Arg2());
-            } break;
-            case Vm::Parser::Cmd::Return: {
-                writer.WriteReturn();
-            } break;
-            case Vm::Parser::Cmd::Invalid: {
-                std::cerr << "Invalid command: " << static_cast<int>(type) << "\n";
-            } break;
+            const auto type = p.CommandType();
+            switch (type) {
+                case Vm::Parser::Cmd::Pop:
+                case Vm::Parser::Cmd::Push: {
+                    writer.WritePushPop(type, p.Arg1(), p.Arg2());
+                } break;
+                case Vm::Parser::Cmd::Arithmetic: {
+                    writer.WriteArithmetic(p.Arg1());
+                } break;
+                case Vm::Parser::Cmd::Label: {
+                    writer.WriteLabel(p.Arg1());
+                } break;
+                case Vm::Parser::Cmd::Goto: {
+                    writer.WriteGoto(p.Arg1());
+                } break;
+                case Vm::Parser::Cmd::If: {
+                    writer.WriteIf(p.Arg1());
+                } break;
+                case Vm::Parser::Cmd::Function: {
+                    writer.WriteFuntion(p.Arg1(), p.Arg2());
+                } break;
+                case Vm::Parser::Cmd::Call: {
+                    writer.WriteCall(p.Arg1(), p.Arg2());
+                } break;
+                case Vm::Parser::Cmd::Return: {
+                    writer.WriteReturn();
+                } break;
+                case Vm::Parser::Cmd::Invalid: {
+                    std::cerr << "Invalid command: " << static_cast<int>(type) << "\n";
+                } break;
 
-            default:
-                break;
+                default:
+                    break;
+            }
         }
     }
 
+    std::cout << "out: " << out_path << std::endl;
     std::cout << "Transration Finished" << std::endl;
 
     return 0;

@@ -2,13 +2,14 @@
 #include "parser.h"
 
 #include <cstddef>
+#include <cstdlib>
+#include <filesystem>
 #include <format>
 #include <ios>
 #include <iostream>
 #include <map>
 #include <memory>
 #include <string>
-
 namespace Vm {
 
 // スタック(RAM[256-2047])とセグメント(RAM[0-255])は別
@@ -93,7 +94,11 @@ class ConstantGenerator : public RamAccessGenerator
         Push(out);
     }
 
-    virtual void WritePop(std::ofstream& out, std::size_t idx) override {}
+    virtual void WritePop(std::ofstream& out, std::size_t idx) override
+    {
+        (void)out;
+        (void)idx;
+    }
 };
 
 class StaticGenerator : public RamAccessGenerator
@@ -366,11 +371,25 @@ static const std::map<std::string, std::shared_ptr<ArithmeticGenerator>> ARITH_G
 
 CodeWriter::CodeWriter(const std::string& filepath)
 {
+    // open output file
     try {
         _out.open(filepath, std::ios::out | std::ios::trunc);
     } catch (const std::exception& e) {
         std::cerr << e.what() << '\n';
+        std::exit(1);
     }
+
+    namespace fs = std::filesystem;
+    this->SetFileName(fs::path(filepath).stem());
+
+    // boot strap code
+    _out << "@256\n"
+            "D=A\n"
+            "@SP\n"
+            "M=D\n";
+
+    // call sys.init
+    WriteCall("Sys.init", 0);
 }
 
 CodeWriter::~CodeWriter() {}
@@ -501,7 +520,7 @@ CodeWriter::WriteCall(const std::string& function_name, const int n_vars)
     this->WriteGoto(function_name);
 
     // (return symbol)
-    _out << '(' << MakeReturnSymbol(_filename, function_name, idx) << ")\n";
+    _out << '(' << symbol << ")\n";
 
     // Increment for next call
     idx++;
@@ -565,6 +584,11 @@ CodeWriter::WriteReturn()
     _out << deref() << "\n"
          << "@LCL\n"
             "M=D\n"; // THAT=*(frame-4)
+
+    // goto retAddr
+    _out << "@R14\n"
+            "A=M\n"
+            "0;JMP\n";
 }
 
 void
