@@ -1,9 +1,7 @@
 use std::{
-    char,
     collections::HashMap,
     fs::File,
-    io::{BufRead, BufReader, Read},
-    ops::Deref,
+    io::{BufRead, BufReader},
     process::exit,
     sync::OnceLock,
 };
@@ -43,12 +41,10 @@ pub enum Keyword {
 }
 
 #[derive(Debug)]
-struct Candidates(Vec<TokenType>);
-
-#[derive(Debug)]
 pub struct Tokenizer {
     token: Option<String>,
-    source: BufReader<File>,
+    source: String,
+    pos: usize,
 }
 
 impl Tokenizer {
@@ -98,58 +94,70 @@ impl Tokenizer {
 
         let reader = BufReader::new(f);
 
+        // start with //
+        let mut buffer: String = reader
+            .lines()
+            .map(|l| {
+                let line = l.expect("Failed to read line");
+                match line.find("//") {
+                    Some(hit) => line[..hit].to_string(),
+                    None => line,
+                }
+            })
+            .collect();
+
+        // /* */ or /** */
+        let mut beg = 0;
+        while let Some(l) = buffer[beg..].find("/*") {
+            if let Some(r) = buffer[l..].find("*/") {
+                buffer.drain(l..=r + 1);
+                beg = l;
+            }
+        }
+
+        // trim whitespac
+        let _ = buffer.trim();
+
         // construct Tokenizer
         // token points at Before-First
         Self {
-            source: reader,
+            source: buffer,
             token: None,
+            pos: 0,
         }
     }
 
     pub fn has_more_tokens(&mut self) -> bool {
-        match self.source.fill_buf() {
-            Ok(buf) => !buf.is_empty(),
-            Err(_) => false,
-        }
+        self.pos < self.source.len()
     }
 
     pub fn advance(&mut self) -> Result<(), std::io::Error> {
-        let mut token = String::new();
-        loop {
-            let mut byte = [0u8];
-            self.source.read_exact(&mut byte)?;
-
-            let ch = byte[0] as char;
-
+        let mut pos = self.pos;
+        while let Some(ch) = self.source.chars().nth(pos) {
             // continue if head is a whitespace
             if ch.is_ascii_whitespace() {
+                pos += 1;
                 continue;
             }
 
             // return if head is a token
             if Self::symbols().contains(ch) {
                 self.token = Some(ch.to_string());
+                self.pos = pos + 1;
                 return Ok(());
             }
 
-            token.push(ch);
+            self.pos = pos;
             break;
         }
 
-        let buffer = self.source.fill_buf()?;
+        let token = self.source[self.pos..]
+            .chars()
+            .take_while(|&byte| !byte.is_ascii_whitespace() && !Self::symbols().contains(byte))
+            .collect::<String>();
 
-        token.push_str(
-            buffer
-                .iter()
-                .take_while(|&byte| {
-                    !byte.is_ascii_whitespace() && !Self::symbols().contains(char::from(*byte))
-                })
-                .map(|&b| b as char)
-                .collect::<String>()
-                .as_str(),
-        );
+        self.pos += token.len();
 
-        self.source.consume(token.len() - 1);
         self.token = if token.is_empty() { None } else { Some(token) };
 
         Ok(())
@@ -243,7 +251,7 @@ impl Tokenizer {
 #[cfg(test)]
 mod test {
     use rstest::{fixture, rstest};
-    use std::{io::Seek, io::Write};
+    use std::io::{Read, Write};
     use tempfile::NamedTempFile;
 
     use super::*;
@@ -271,7 +279,7 @@ mod test {
     ) -> Result<(), Box<dyn std::error::Error>> {
         assert!(void_function_main.has_more_tokens());
 
-        void_function_main.source.seek(std::io::SeekFrom::End(0))?;
+        void_function_main.pos = void_function_main.source.len();
 
         assert!(!void_function_main.has_more_tokens());
 
@@ -308,11 +316,14 @@ mod test {
 
     #[fixture]
     fn tokenizer_for_token_text() -> Tokenizer {
-        let f = NamedTempFile::new().unwrap();
-        let reader = BufReader::new(f.into_file());
+        let mut f = NamedTempFile::new().unwrap();
+        let mut source = String::new();
+        f.read_to_string(&mut source).unwrap();
+
         Tokenizer {
-            source: reader,
+            source,
             token: None,
+            pos: 0,
         }
     }
 
