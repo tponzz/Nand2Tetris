@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     fs::File,
     io::{BufRead, BufReader},
+    ops::{self, Range},
     process::exit,
     sync::OnceLock,
 };
@@ -42,9 +43,9 @@ pub enum Keyword {
 
 #[derive(Debug)]
 pub struct Tokenizer {
-    token: Option<String>,
+    // [beg, end)
+    token: ops::Range<usize>,
     source: String,
-    pos: usize,
 }
 
 impl Tokenizer {
@@ -122,49 +123,57 @@ impl Tokenizer {
         // token points at Before-First
         Self {
             source: buffer,
-            token: None,
-            pos: 0,
+            token: Range::default(),
         }
     }
 
     pub fn has_more_tokens(&mut self) -> bool {
-        self.pos < self.source.len()
+        self.token.end < self.source.len()
     }
 
     pub fn advance(&mut self) -> Result<(), std::io::Error> {
-        let mut pos = self.pos;
-        while let Some(ch) = self.source.chars().nth(pos) {
-            // continue if head is a whitespace
-            if ch.is_ascii_whitespace() {
-                pos += 1;
-                continue;
-            }
+        let mut win = self.token.end..self.token.end;
 
-            // return if head is a token
-            if Self::symbols().contains(ch) {
-                self.token = Some(ch.to_string());
-                self.pos = pos + 1;
-                return Ok(());
-            }
-
-            self.pos = pos;
-            break;
+        // skip whitespaces
+        while self
+            .source
+            .as_bytes()
+            .get(win.end)
+            .is_some_and(|b| b.is_ascii_whitespace())
+        {
+            win.end += 1;
         }
 
-        let token = self.source[self.pos..]
-            .chars()
-            .take_while(|&byte| !byte.is_ascii_whitespace() && !Self::symbols().contains(byte))
-            .collect::<String>();
+        win.start = win.end;
 
-        self.pos += token.len();
+        // return if head is a symbol
+        if self
+            .source
+            .as_bytes()
+            .get(win.start)
+            .is_some_and(|&ch| Self::symbols().contains(ch as char))
+        {
+            win.end += 1;
+            self.token = win;
+            return Ok(());
+        }
 
-        self.token = if token.is_empty() { None } else { Some(token) };
+        // find end of token
+        let end = self.source[win.start..]
+            .find(|byte: char| byte.is_ascii_whitespace() || Self::symbols().contains(byte));
+
+        win.end = match end {
+            Some(pos) => win.start + pos,
+            None => self.source.len() + 1,
+        };
+
+        self.token = win;
 
         Ok(())
     }
 
     pub fn token_type(&self) -> Option<TokenType> {
-        let token = self.token.as_deref()?;
+        let token = &self.source[self.token.clone()];
 
         // symbol
         let symbols = Self::symbols();
@@ -221,13 +230,17 @@ impl Tokenizer {
         }
 
         let keywords = Self::keywords()?;
-        let key = self.token.as_deref()?;
+        let key = &self.source[self.token.clone()];
 
         keywords.get(key)
     }
 
     pub fn symbol(&self) -> Option<&str> {
-        self.token.as_deref()
+        if self.source.len() >= self.token.end {
+            return Some(&self.source[self.token.clone()]);
+        }
+
+        None
     }
     pub fn identifier(&self) -> Option<&str> {
         self.eq_token_type(&TokenType::Identifier)
@@ -244,7 +257,7 @@ impl Tokenizer {
             return None;
         }
 
-        self.token.as_deref()
+        Some(&self.source[self.token.clone()])
     }
 }
 
@@ -255,6 +268,11 @@ mod test {
     use tempfile::NamedTempFile;
 
     use super::*;
+
+    fn set_token_text(tokenizer: &mut Tokenizer, text: &str) {
+        tokenizer.source = text.to_string();
+        tokenizer.token = 0..text.len();
+    }
 
     #[fixture]
     pub fn void_function_main() -> Tokenizer {
@@ -279,7 +297,7 @@ mod test {
     ) -> Result<(), Box<dyn std::error::Error>> {
         assert!(void_function_main.has_more_tokens());
 
-        void_function_main.pos = void_function_main.source.len();
+        void_function_main.token.end = void_function_main.source.len();
 
         assert!(!void_function_main.has_more_tokens());
 
@@ -302,13 +320,14 @@ mod test {
         #[case] token: String,
         #[case] skip: i32,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        assert_eq!(void_function_main.token, None);
-
         for _ in 0..skip {
             void_function_main.advance().unwrap();
         }
 
-        assert_eq!(void_function_main.token, Some(token));
+        assert_eq!(
+            void_function_main.source[void_function_main.token.clone()],
+            token
+        );
 
         Ok(())
     }
@@ -322,15 +341,14 @@ mod test {
 
         Tokenizer {
             source,
-            token: None,
-            pos: 0,
+            token: 0..0,
         }
     }
 
     #[rstest]
     fn test_token_type_for_symbol(mut tokenizer_for_token_text: Tokenizer) {
         for keyword in Tokenizer::symbols().chars() {
-            tokenizer_for_token_text.token = Some(keyword.to_string());
+            set_token_text(&mut tokenizer_for_token_text, &keyword.to_string());
             assert_eq!(
                 tokenizer_for_token_text.token_type(),
                 Some(TokenType::Symbol)
@@ -341,7 +359,7 @@ mod test {
     #[rstest]
     fn test_token_type_for_keyword(mut tokenizer_for_token_text: Tokenizer) {
         for &keyword in Tokenizer::keywords().unwrap().keys() {
-            tokenizer_for_token_text.token = Some(keyword.to_string());
+            set_token_text(&mut tokenizer_for_token_text, keyword);
             assert_eq!(
                 tokenizer_for_token_text.token_type(),
                 Some(TokenType::Keyword)
@@ -352,7 +370,7 @@ mod test {
     #[rstest]
     fn test_token_type_for_int_const(mut tokenizer_for_token_text: Tokenizer) {
         for &keyword in Tokenizer::keywords().unwrap().keys() {
-            tokenizer_for_token_text.token = Some(keyword.to_string());
+            set_token_text(&mut tokenizer_for_token_text, keyword);
             assert_eq!(
                 tokenizer_for_token_text.token_type(),
                 Some(TokenType::Keyword)
@@ -365,7 +383,7 @@ mod test {
     fn test_token_type_for_int_const_valid(mut tokenizer_for_token_text: Tokenizer) {
         let int_const_valid = [0, 32767, 17, 314];
         for i in int_const_valid {
-            tokenizer_for_token_text.token = Some(i.to_string());
+            set_token_text(&mut tokenizer_for_token_text, &i.to_string());
             assert_eq!(
                 tokenizer_for_token_text.token_type(),
                 Some(TokenType::IntConst)
@@ -378,7 +396,7 @@ mod test {
     fn test_token_type_for_int_const_invalid(mut tokenizer_for_token_text: Tokenizer) {
         let int_const_invalid = [32768];
         for i in int_const_invalid {
-            tokenizer_for_token_text.token = Some(i.to_string());
+            set_token_text(&mut tokenizer_for_token_text, &i.to_string());
             assert_eq!(tokenizer_for_token_text.token_type(), None);
         }
     }
@@ -391,7 +409,7 @@ mod test {
         mut tokenizer_for_token_text: Tokenizer,
         #[case] input: &str,
     ) {
-        tokenizer_for_token_text.token = Some(input.to_string());
+        set_token_text(&mut tokenizer_for_token_text, input);
         assert_eq!(
             tokenizer_for_token_text.token_type(),
             Some(TokenType::StringConst)
@@ -403,7 +421,7 @@ mod test {
     fn test_token_type_for_string_const_invalid(mut tokenizer_for_token_text: Tokenizer) {
         let string_const = ["\"abc\"defg\"", "\"aaa\naaa\"", "\"aaa\raaa\""];
         for s in string_const {
-            tokenizer_for_token_text.token = Some(s.to_string());
+            set_token_text(&mut tokenizer_for_token_text, s);
             assert_eq!(tokenizer_for_token_text.token_type(), None);
         }
     }
@@ -413,7 +431,7 @@ mod test {
     fn test_token_type_for_identifier_valid(mut tokenizer_for_token_text: Tokenizer) {
         let identifier = ["main", "CamelCase", "DevideBy10", "snake_case"];
         for id in identifier {
-            tokenizer_for_token_text.token = Some(id.to_string());
+            set_token_text(&mut tokenizer_for_token_text, id);
             assert_eq!(
                 tokenizer_for_token_text.token_type(),
                 Some(TokenType::Identifier)
@@ -426,7 +444,7 @@ mod test {
     fn test_token_type_for_identifier_invalid(mut tokenizer_for_token_text: Tokenizer) {
         let identifier = ["10Good", "0Bad"];
         for id in identifier {
-            tokenizer_for_token_text.token = Some(id.to_string());
+            set_token_text(&mut tokenizer_for_token_text, id);
             assert_eq!(tokenizer_for_token_text.token_type(), None);
         }
     }
