@@ -1,55 +1,44 @@
 mod cli;
+mod engine;
 mod tokenizer;
 
-use clap::Parser;
-use tokenizer::Tokenizer;
+use std::process::exit;
 
-use crate::tokenizer::TokenType;
+use crate::engine::CompilationEngine;
+use clap::Parser;
+
 #[derive(Debug)]
 pub enum JAError {
     Io,
+    Compile(CompileErrKind),
+}
+
+#[derive(Debug, Clone)]
+pub enum CompileErrKind {
+    Class,
+    Subroutine,
+    ParameterList,
+    SubroutineBody,
+    VarDec,
+    Let,
+    If,
+    While,
+    Do,
+    Return,
+    Term,
 }
 
 pub fn run() -> Result<(), JAError> {
     let cli = cli::Args::parse();
     println!("{}", cli.source);
 
-    let mut tokenizer = Tokenizer::new(&cli.source);
-    while tokenizer.has_more_tokens() {
-        if tokenizer.advance().is_err() {
-            return Err(JAError::Io);
-        };
+    let sink = "Out.xml";
 
-        if let Some(t) = tokenizer.token_type() {
-            match t {
-                TokenType::Keyword => {
-                    if let Some(key) = tokenizer.keyword() {
-                        println!("KEY: {:?}", key);
-                    }
-                }
-                TokenType::Symbol => {
-                    if let Some(sym) = tokenizer.symbol() {
-                        println!("SYM: {}", sym);
-                    }
-                }
-                TokenType::Identifier => {
-                    if let Some(id) = tokenizer.identifier() {
-                        println!("IDT: {}", id);
-                    }
-                }
-                TokenType::IntConst => {
-                    if let Some(val) = tokenizer.int_val() {
-                        println!("INT: {}", val);
-                    }
-                }
-                TokenType::StringConst => {
-                    if let Some(val) = tokenizer.string_val() {
-                        println!("STR: {}", val);
-                    }
-                }
-            }
-        };
+    match CompilationEngine::new(&cli.source, sink) {
+        Ok(mut engine) => engine.compile_class(),
+        Err(e) => {
+            eprintln!("Failed to open files: {:?}", e);
+            exit(1)
+        }
     }
-
-    Ok(())
 }

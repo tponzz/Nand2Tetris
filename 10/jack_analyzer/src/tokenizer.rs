@@ -1,13 +1,52 @@
 use std::{
     collections::HashMap,
+    fmt::Display,
     fs::File,
-    io::{BufRead, BufReader},
-    ops::{self, Range},
-    process::exit,
+    io::{self, BufRead, BufReader},
+    ops::{self},
     sync::OnceLock,
 };
 
 #[derive(Debug, PartialEq)]
+pub enum Token {
+    Symbol(char),
+    IntConst(i16),
+    StringConst(String),
+    Keyword(Keyword),
+    Identifier(String),
+}
+
+impl Token {
+    pub fn from(tokenizer: &Tokenizer) -> Option<Self> {
+        match tokenizer.token_type() {
+            Some(t) => match t {
+                TokenType::Keyword => {
+                    let keyword = tokenizer.keyword()?.clone();
+                    Some(Token::Keyword(keyword))
+                }
+                TokenType::Symbol => {
+                    let symbol = tokenizer.symbol()?;
+                    Some(Token::Symbol(symbol))
+                }
+                TokenType::Identifier => {
+                    let id = tokenizer.identifier()?;
+                    Some(Token::Identifier(id.to_string()))
+                }
+                TokenType::IntConst => {
+                    let i = tokenizer.int_val().map(|n| n.parse::<i16>().ok())?;
+                    Some(Token::IntConst(i?))
+                }
+                TokenType::StringConst => {
+                    let s = tokenizer.string_val().map(|s| s.to_string())?;
+                    Some(Token::StringConst(s))
+                }
+            },
+            None => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TokenType {
     Keyword,
     Symbol,
@@ -16,7 +55,19 @@ pub enum TokenType {
     StringConst,
 }
 
-#[derive(Debug)]
+impl Display for TokenType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TokenType::Keyword => write!(f, "keyword"),
+            TokenType::Symbol => write!(f, "symbol"),
+            TokenType::Identifier => write!(f, "identifier"),
+            TokenType::IntConst => write!(f, "integerConstant"),
+            TokenType::StringConst => write!(f, "stringConstant"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Keyword {
     Class,
     Method,
@@ -39,6 +90,34 @@ pub enum Keyword {
     False,
     Null,
     This,
+}
+
+impl Display for Keyword {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Keyword::Class => write!(f, "class"),
+            Keyword::Method => write!(f, "method"),
+            Keyword::Function => write!(f, "function"),
+            Keyword::Constructor => write!(f, "constructor"),
+            Keyword::Int => write!(f, "int"),
+            Keyword::Boolean => write!(f, "boolean"),
+            Keyword::Char => write!(f, "char"),
+            Keyword::Void => write!(f, "void"),
+            Keyword::Var => write!(f, "var"),
+            Keyword::Static => write!(f, "static"),
+            Keyword::Field => write!(f, "field"),
+            Keyword::Let => write!(f, "let"),
+            Keyword::Do => write!(f, "do"),
+            Keyword::If => write!(f, "if"),
+            Keyword::Else => write!(f, "else"),
+            Keyword::While => write!(f, "while"),
+            Keyword::Return => write!(f, "return"),
+            Keyword::True => write!(f, "true"),
+            Keyword::False => write!(f, "false"),
+            Keyword::Null => write!(f, "null"),
+            Keyword::This => write!(f, "this"),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -86,14 +165,9 @@ impl Tokenizer {
 
     // source: .jack file path
     // if fail to open 'source', exit with 1
-    pub fn new(source: &str) -> Self {
+    pub fn new(source: &str) -> Result<Self, io::Error> {
         // open source file
-        let f = File::open(source).unwrap_or_else(|e| {
-            eprintln!("Failed to open source '{}': {e}", source);
-            exit(1)
-        });
-
-        let reader = BufReader::new(f);
+        let reader = BufReader::new(File::open(source)?);
 
         // start with //
         let mut buffer: String = reader
@@ -109,10 +183,15 @@ impl Tokenizer {
 
         // /* */ or /** */
         let mut beg = 0;
-        while let Some(l) = buffer[beg..].find("/*") {
-            if let Some(r) = buffer[l..].find("*/") {
-                buffer.drain(l..=r + 1);
-                beg = l;
+        while let Some(rel_start) = buffer[beg..].find("/*") {
+            let start = beg + rel_start;
+            match buffer[start..].find("*/") {
+                Some(rel_end) => {
+                    let end = start + rel_end + 2;
+                    buffer.drain(start..end);
+                    beg = start;
+                }
+                None => break,
             }
         }
 
@@ -121,10 +200,10 @@ impl Tokenizer {
 
         // construct Tokenizer
         // token points at Before-First
-        Self {
+        Ok(Self {
             source: buffer,
-            token: Range::default(),
-        }
+            token: ops::Range::default(),
+        })
     }
 
     pub fn has_more_tokens(&mut self) -> bool {
@@ -146,6 +225,17 @@ impl Tokenizer {
 
         win.start = win.end;
 
+        // string constant: consume up to the matching closing quote as one
+        // token, ignoring any whitespace/symbol characters inside it
+        if self.source.as_bytes().get(win.start) == Some(&b'"') {
+            win.end = match self.source[win.start + 1..].find('"') {
+                Some(pos) => win.start + 1 + pos + 1,
+                None => self.source.len(),
+            };
+            self.token = win.clone();
+            return Ok(());
+        }
+
         // return if head is a symbol
         if self
             .source
@@ -154,7 +244,7 @@ impl Tokenizer {
             .is_some_and(|&ch| Self::symbols().contains(ch as char))
         {
             win.end += 1;
-            self.token = win;
+            self.token = win.clone();
             return Ok(());
         }
 
@@ -164,10 +254,10 @@ impl Tokenizer {
 
         win.end = match end {
             Some(pos) => win.start + pos,
-            None => self.source.len() + 1,
+            None => self.source.len(),
         };
 
-        self.token = win;
+        self.token = win.clone();
 
         Ok(())
     }
@@ -235,9 +325,9 @@ impl Tokenizer {
         keywords.get(key)
     }
 
-    pub fn symbol(&self) -> Option<&str> {
+    pub fn symbol(&self) -> Option<char> {
         if self.source.len() >= self.token.end {
-            return Some(&self.source[self.token.clone()]);
+            return self.source.chars().nth(self.token.start);
         }
 
         None
@@ -249,7 +339,9 @@ impl Tokenizer {
         self.eq_token_type(&TokenType::IntConst)
     }
     pub fn string_val(&self) -> Option<&str> {
-        self.eq_token_type(&TokenType::StringConst)
+        // strip the surrounding quotes; the value itself never contains one
+        let with_quotes = self.eq_token_type(&TokenType::StringConst)?;
+        Some(&with_quotes[1..with_quotes.len() - 1])
     }
 
     fn eq_token_type(&self, t: &TokenType) -> Option<&str> {
@@ -288,7 +380,7 @@ mod test {
         let mut file = NamedTempFile::new().unwrap();
         writeln!(file, "{}", src).unwrap();
 
-        Tokenizer::new(file.path().to_str().unwrap())
+        Tokenizer::new(file.path().to_str().unwrap()).unwrap()
     }
 
     #[rstest]
