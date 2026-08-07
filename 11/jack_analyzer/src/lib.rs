@@ -3,7 +3,10 @@ mod symbol_table;
 mod tokenizer;
 mod vm_writer;
 
-use std::process::exit;
+use std::{
+    io::{self},
+    process::exit,
+};
 
 use crate::engine::CompilationEngine;
 use clap::Parser;
@@ -16,8 +19,14 @@ pub struct Args {
 
 #[derive(Debug)]
 pub enum JAError {
-    Io,
+    Io(String),
     Compile(CompileErrKind),
+}
+
+impl From<io::Error> for JAError {
+    fn from(e: io::Error) -> Self {
+        JAError::Io(e.to_string())
+    }
 }
 
 #[derive(Debug, Clone)]

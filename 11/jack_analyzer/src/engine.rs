@@ -16,8 +16,10 @@ pub struct CompilationEngine {
 
 impl CompilationEngine {
     pub fn new(path_in: &str, path_out: &str) -> Result<Self, JAError> {
-        let tokenizer = Tokenizer::new(path_in).map_err(|_| JAError::Io)?;
-        let xml_out = File::create(path_out).map_err(|_| JAError::Io)?;
+        let tokenizer = Tokenizer::new(path_in)
+            .map_err(|_| JAError::Io("Failed to read source".to_string()))?;
+        let xml_out =
+            File::create(path_out).map_err(|_| JAError::Io("Failed to open .xml".to_string()))?;
 
         let mut engine = Self {
             tokenizer,
@@ -32,7 +34,9 @@ impl CompilationEngine {
 
     fn advance(&mut self) -> Result<(), JAError> {
         self.current = if self.tokenizer.has_more_tokens() {
-            self.tokenizer.advance().map_err(|_| JAError::Io)?;
+            self.tokenizer
+                .advance()
+                .map_err(|_| JAError::Io("Failed to advance".to_string()))?;
             Token::from(&self.tokenizer)
         } else {
             None
