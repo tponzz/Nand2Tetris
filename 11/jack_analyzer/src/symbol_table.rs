@@ -61,24 +61,17 @@ impl SymbolTable {
     }
 
     pub fn kind_of(&self, name: &str) -> Option<&SymbolKind> {
-        self.table
-            .iter()
-            .find_map(|r| if r.name == name { Some(&r.kind) } else { None })
+        self.table.iter().find(|r| r.name == name).map(|r| &r.kind)
     }
 
     pub fn type_of(&self, name: &str) -> Option<&String> {
-        self.table.iter().find_map(|r| {
-            if r.name == name {
-                Some(&r.typename)
-            } else {
-                None
-            }
-        })
+        self.table
+            .iter()
+            .find(|r| r.name == name)
+            .map(|r| &r.typename)
     }
 
     pub fn index_of(&self, name: &str) -> Option<u32> {
-        self.table
-            .iter()
-            .find_map(|r| if r.name == name { Some(r.index) } else { None })
+        self.table.iter().find(|r| r.name == name).map(|r| r.index)
     }
 }
