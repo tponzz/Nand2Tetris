@@ -1,6 +1,7 @@
 mod engine;
 mod symbol_table;
 mod tokenizer;
+mod vm_writer;
 
 use std::process::exit;
 
