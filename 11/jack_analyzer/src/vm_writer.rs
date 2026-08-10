@@ -3,7 +3,7 @@ use std::{fmt, fs::File, io::BufWriter, io::Write};
 use crate::JAError;
 
 #[derive(Debug)]
-struct VmWriter {
+pub struct VmWriter {
     writer: BufWriter<File>,
 }
 
@@ -64,7 +64,7 @@ impl fmt::Display for CommandKind {
 }
 
 impl VmWriter {
-    fn new(source: &str) -> Self {
+    pub fn new(source: &str) -> Self {
         let file = File::open(source).expect("Failed to open output file");
         let writer = BufWriter::new(file);
         Self { writer }

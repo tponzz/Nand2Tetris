@@ -1,9 +1,82 @@
+use core::fmt;
 use std::{fmt::Display, fs::File, io::Write};
 
 use crate::{
     CompileErrKind, JAError,
+    symbol_table::{SymbolKind, SymbolTable},
     tokenizer::{Keyword, Token, TokenType, Tokenizer},
+    vm_writer::VmWriter,
 };
+
+#[derive(Debug, Eq, PartialEq, Clone, Copy)]
+enum Category {
+    Field,
+    Static,
+    Var,
+    Arg,
+    Class,
+    SubRoutine,
+}
+
+impl From<&SymbolKind> for Category {
+    fn from(kind: &SymbolKind) -> Self {
+        match kind {
+            SymbolKind::Static => Category::Static,
+            SymbolKind::Field => Category::Field,
+            SymbolKind::Arg => Category::Arg,
+            SymbolKind::Var => Category::Var,
+        }
+    }
+}
+
+impl fmt::Display for Category {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Category::Field => write!(f, "field"),
+            Category::Static => write!(f, "static"),
+            Category::Var => write!(f, "var"),
+            Category::Arg => write!(f, "arg"),
+            Category::Class => write!(f, "class"),
+            Category::SubRoutine => write!(f, "subroutine"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Usage {
+    Declared,
+    Used,
+}
+
+impl fmt::Display for Usage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Usage::Declared => write!(f, "declared"),
+            Usage::Used => write!(f, "used"),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct IdentifierDetail {
+    name: String,
+    category: Category,
+    index: Option<u32>,
+    usage: Usage,
+}
+
+impl fmt::Display for IdentifierDetail {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} {} {} {}",
+            self.name,
+            self.category,
+            self.index.map_or("".to_string(), |i| i.to_string()),
+            self.usage
+        )
+    }
+}
 
 pub struct CompilationEngine {
     current: Option<Token>,
@@ -12,6 +85,8 @@ pub struct CompilationEngine {
     tokenizer: Tokenizer,
     // 出力ストリーム？
     xml_out: File,
+    writer: VmWriter,
+    st: SymbolTable,
 }
 
 impl CompilationEngine {
@@ -21,10 +96,15 @@ impl CompilationEngine {
         let xml_out =
             File::create(path_out).map_err(|_| JAError::Io("Failed to open .xml".to_string()))?;
 
+        let writer = VmWriter::new(path_out);
+        let st = SymbolTable::new();
+
         let mut engine = Self {
             tokenizer,
             xml_out,
             current: None,
+            writer,
+            st,
         };
 
         engine.advance()?;

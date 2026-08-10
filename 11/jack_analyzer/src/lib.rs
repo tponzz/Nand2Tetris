@@ -29,7 +29,7 @@ impl From<io::Error> for JAError {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum CompileErrKind {
     Class,
     Subroutine,

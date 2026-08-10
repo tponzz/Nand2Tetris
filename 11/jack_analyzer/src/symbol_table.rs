@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::JAError;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-enum SymbolKind {
+pub enum SymbolKind {
     Static,
     Field,
     Arg,
@@ -19,26 +19,26 @@ struct Record {
 }
 
 #[derive(Debug)]
-struct SymbolTable {
+pub struct SymbolTable {
     table: Vec<Record>,
     count: HashMap<SymbolKind, u32>,
 }
 
 impl SymbolTable {
-    fn new() -> Self {
+    pub fn new() -> Self {
         SymbolTable {
             table: vec![],
             count: HashMap::default(),
         }
     }
 
-    fn reset(&mut self) -> Result<(), JAError> {
+    pub fn reset(&mut self) -> Result<(), JAError> {
         self.table.clear();
         self.count.clear();
         Ok(())
     }
 
-    fn define(&mut self, name: &str, typename: &str, kind: SymbolKind) -> Result<(), JAError> {
+    pub fn define(&mut self, name: &str, typename: &str, kind: SymbolKind) -> Result<(), JAError> {
         let counter = self.count.entry(kind.clone()).or_default();
         let index = *counter;
 
@@ -54,7 +54,7 @@ impl SymbolTable {
         Ok(())
     }
 
-    fn var_count(&self, kind: &SymbolKind) -> u32 {
+    pub fn var_count(&self, kind: &SymbolKind) -> u32 {
         *self.count.get(kind).unwrap_or(&0)
     }
 
