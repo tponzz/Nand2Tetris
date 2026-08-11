@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::JAError;
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum SymbolKind {
     Static,
     Field,
