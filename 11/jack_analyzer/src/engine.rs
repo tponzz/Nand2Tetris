@@ -1,5 +1,6 @@
 use core::fmt;
-use std::fs::File;
+use std::io::Write;
+use std::{fs::File, io};
 
 use crate::{
     CompileErrKind, JAError,
@@ -58,21 +59,23 @@ impl fmt::Display for IdentifierDetail {
             "{} {} {} {}",
             self.name,
             self.category,
+            self.usage,
             self.index.map_or("".to_string(), |i| i.to_string()),
-            self.usage
         )
     }
 }
 
 pub struct CompilationEngine {
     current: Option<Token>,
+    next: Option<Token>,
     // 何をメンバに持たせるか
     // 入力ストリーム？ -> Tokenizer
     tokenizer: Tokenizer,
     // 出力ストリーム？
     xml_out: File,
     writer: VmWriter,
-    st: SymbolTable,
+    class_st: SymbolTable,
+    method_st: SymbolTable,
 }
 
 impl CompilationEngine {
@@ -83,14 +86,15 @@ impl CompilationEngine {
             File::create(path_out).map_err(|_| JAError::Io("Failed to open .xml".to_string()))?;
 
         let writer = VmWriter::new(path_out);
-        let st = SymbolTable::new();
 
         let mut engine = Self {
             tokenizer,
             xml_out,
             current: None,
+            next: None,
             writer,
-            st,
+            class_st: SymbolTable::new(),
+            method_st: SymbolTable::new(),
         };
 
         engine.advance()?;
@@ -99,7 +103,7 @@ impl CompilationEngine {
     }
 
     fn advance(&mut self) -> Result<(), JAError> {
-        self.current = if self.tokenizer.has_more_tokens() {
+        self.next = if self.tokenizer.has_more_tokens() {
             self.tokenizer
                 .advance()
                 .map_err(|_| JAError::Io("Failed to advance".to_string()))?;
@@ -119,9 +123,12 @@ impl CompilationEngine {
         pred: impl FnOnce(&Token) -> bool,
     ) -> Result<Option<&Token>, JAError> {
         // 条件に合わないとスルー
-        if !self.current.as_ref().is_some_and(pred) {
+        if !self.next.as_ref().is_some_and(pred) {
             return Ok(None);
         }
+
+        self.current = self.next.take();
+        self.advance()?;
 
         Ok(self.current.as_ref())
     }
@@ -141,7 +148,7 @@ impl CompilationEngine {
         }
     }
 
-    fn accept_identifier(&mut self) -> Result<Option<&String>, JAError> {
+    fn accept_identifier(&mut self) -> Result<Option<String>, JAError> {
         let tok = self.accept(|tok| {
             if let Token::Identifier(typename) = tok {
                 return typename.starts_with(|c: char| c == '_' || c.is_ascii_alphabetic())
@@ -152,13 +159,13 @@ impl CompilationEngine {
         })?;
 
         if let Some(Token::Identifier(id)) = tok {
-            Ok(Some(id))
+            Ok(Some(id.clone()))
         } else {
             Ok(None)
         }
     }
 
-    fn expect_identifier(&mut self, ekind: &CompileErrKind) -> Result<&String, JAError> {
+    fn expect_identifier(&mut self, ekind: &CompileErrKind) -> Result<String, JAError> {
         let tok = self.expect(
             |tok| {
                 if let Token::Identifier(typename) = tok {
@@ -172,10 +179,27 @@ impl CompilationEngine {
         )?;
 
         if let Token::Identifier(id) = tok {
-            Ok(id)
+            Ok(id.clone())
         } else {
             Err(JAError::Compile(*ekind))
         }
+    }
+
+    fn write_id_details(
+        &mut self,
+        name: &str,
+        category: Category,
+        usage: Usage,
+        index: Option<u32>,
+    ) -> io::Result<()> {
+        let detail = IdentifierDetail {
+            name: name.to_string(),
+            category,
+            index,
+            usage,
+        };
+
+        writeln!(self.xml_out, "{}", detail)
     }
 
     // シンボルが一致していることが期待される
@@ -204,24 +228,26 @@ impl CompilationEngine {
             .map(|tok| tok.is_some())
     }
 
-    fn peek_keyword(&self, keyword: Keyword) -> bool {
-        self.current == Some(Token::Keyword(keyword))
-    }
-
+    // typeのreturnは必要か？
     fn accept_type(&mut self) -> Result<Option<String>, JAError> {
-        todo!("identifier detail");
-        if let Some(t) = self.accept_identifier()? {
-            Ok(Some(t.clone()))
-        } else if let Some(Token::Identifier(t)) = self.accept(|tok| match tok {
-            Token::Keyword(keyword) => {
-                [Keyword::Boolean, Keyword::Int, Keyword::Char].contains(keyword)
-            }
-            _ => false,
-        })? {
-            Ok(Some(t.clone()))
-        } else {
-            Ok(None)
+        if let Some(typename) = self.accept_identifier()? {
+            // Category: class, Usage: Declared, index: None
+            self.write_id_details(&typename, Category::Class, Usage::Declared, None)?;
+            return Ok(Some(typename));
         }
+
+        if let Some(Token::Keyword(t)) = self.accept(|tok| {
+            matches!(
+                tok,
+                Token::Keyword(Keyword::Boolean)
+                    | Token::Keyword(Keyword::Int)
+                    | Token::Keyword(Keyword::Char)
+            )
+        })? {
+            return Ok(Some(t.to_string()));
+        }
+
+        Ok(None)
     }
 
     fn expect_type(&mut self, ekind: &CompileErrKind) -> Result<String, JAError> {
@@ -245,7 +271,10 @@ impl CompilationEngine {
     fn accept_keyword_const(&mut self) -> Result<bool, JAError> {
         self.accept(|tok| match tok {
             Token::Keyword(k) => {
-                [Keyword::True, Keyword::False, Keyword::Null, Keyword::This].contains(k)
+                matches!(
+                    k,
+                    Keyword::True | Keyword::False | Keyword::Null | Keyword::This
+                )
             }
             _ => false,
         })
@@ -257,15 +286,15 @@ impl CompilationEngine {
         self.expect_keyword(Keyword::Class, &CompileErrKind::Class)?;
 
         // Class identifier
-        todo!("identifier detail");
-        self.expect_identifier(&CompileErrKind::Class)?;
+        let class = self.expect_identifier(&CompileErrKind::Class)?;
+        self.write_id_details(&class, Category::Class, Usage::Declared, None)?;
 
         // { token
         self.expect_symbol('{', &CompileErrKind::Class)?;
 
         // class var declarations (0 or more)
         while matches!(
-            self.current,
+            self.next,
             Some(Token::Keyword(Keyword::Static)) | Some(Token::Keyword(Keyword::Field))
         ) {
             self.compile_class_var_dec()?;
@@ -273,7 +302,7 @@ impl CompilationEngine {
 
         // class method declarations (0 or more)
         while matches!(
-            self.current,
+            self.next,
             Some(Token::Keyword(Keyword::Constructor))
                 | Some(Token::Keyword(Keyword::Function))
                 | Some(Token::Keyword(Keyword::Method))
@@ -291,26 +320,27 @@ impl CompilationEngine {
         // function keyword
         self.expect(
             |tok| {
-                [
-                    Token::Keyword(Keyword::Constructor),
-                    Token::Keyword(Keyword::Function),
-                    Token::Keyword(Keyword::Method),
-                ]
-                .contains(tok)
+                matches!(
+                    tok,
+                    Token::Keyword(Keyword::Constructor)
+                        | Token::Keyword(Keyword::Function)
+                        | Token::Keyword(Keyword::Method)
+                )
             },
             &CompileErrKind::Subroutine,
         )?;
 
         // type keyword tag
-        // TODO: 関数名は要取得
-        // identifierのissomeは一時的
-        if !self.accept_keyword(Keyword::Void)? && self.accept_identifier()?.is_none() {
+        if self.accept_keyword(Keyword::Void)? {
+        } else if let Some(id) = self.accept_identifier()? {
+            self.write_id_details(&id, Category::Class, Usage::Declared, None)?;
+        } else {
             return Err(JAError::Compile(CompileErrKind::Subroutine));
         }
 
         // identifier tag
-        todo!("identifier detail");
-        self.expect_identifier(&CompileErrKind::Subroutine)?;
+        let subroutine = self.expect_identifier(&CompileErrKind::Subroutine)?;
+        self.write_id_details(&subroutine, Category::SubRoutine, Usage::Used, None)?;
 
         // Parameters
         // ( token
@@ -323,7 +353,7 @@ impl CompilationEngine {
         self.expect_symbol(')', &CompileErrKind::Subroutine)?;
 
         // class method declarations
-        // compile_subroutine_body already consumes the body's closing '}'
+        // compile_subroutine_body already consumes the body's '{}'
         self.compile_subroutine_body()?;
 
         Ok(())
@@ -332,13 +362,19 @@ impl CompilationEngine {
     // parameterList: ((type varName) (',' type varName)*)?
     // The surrounding '(' ')' belong to the caller (compile_subroutine), not here.
     pub fn compile_parameter_list(&mut self) -> Result<(), JAError> {
-        while let Some(t) = self.accept_type()? {
-            let param = self.expect_identifier(&CompileErrKind::ParameterList)?;
+        while let Some(typename) = self.accept_type()? {
+            let name = self.expect_identifier(&CompileErrKind::ParameterList)?;
 
-            // TODO:
-            // lookup parameters from symbol_table
-            // Name: param, Category: Arg, Usage: Used, index: get from symbol_table
-            todo!("identifier detail");
+            // Add params to symbol_table as args
+            self.method_st.define(&name, &typename, SymbolKind::Arg)?;
+
+            // Name: param, Category: Arg, Usage: Declared, index: None
+            self.write_id_details(
+                &name,
+                Category::Symbol(SymbolKind::Arg),
+                Usage::Declared,
+                None,
+            )?;
 
             if !self.accept_symbol(',')? {
                 break;
@@ -349,12 +385,14 @@ impl CompilationEngine {
     }
 
     pub fn compile_subroutine_body(&mut self) -> Result<(), JAError> {
+        self.method_st.reset()?;
+
         // {
         self.expect_symbol('{', &CompileErrKind::SubroutineBody)?;
 
         // var dec
         // 0..*
-        while matches!(self.current, Some(Token::Keyword(Keyword::Var))) {
+        while matches!(self.next, Some(Token::Keyword(Keyword::Var))) {
             self.compile_var_dec()?;
         }
 
@@ -370,19 +408,49 @@ impl CompilationEngine {
 
     // type varName (',' varName)* ';' -- shared by varDec and classVarDec,
     // which differ only in their leading keyword.
-    fn compile_var_dec_tail(&mut self) -> Result<(), JAError> {
+    // class -> static, field
+    // method -> var
+    fn compile_var_dec_tail(&mut self, skind: SymbolKind) -> Result<(), JAError> {
         // type : int|char|boolean|className(identifier)
         let typename = self.expect_type(&CompileErrKind::VarDec)?;
 
         // if symbol ',', other varName(identifier)
         while !self.accept_symbol(';')? {
-            todo!("identifier detail");
-
-            let tok = self.accept_identifier()?;
-            if let Some(id) = tok {
+            if let Some(id) = self.accept_identifier()? {
                 // シンボルテーブルへ登録
-                let id = id.to_string();
-                self.st.define(&id, &typename, SymbolKind::Var)?;
+                let name = id.to_string();
+                match skind {
+                    SymbolKind::Static => {
+                        self.write_id_details(
+                            &name,
+                            Category::Symbol(SymbolKind::Static),
+                            Usage::Declared,
+                            None,
+                        )?;
+                        self.class_st.define(&name, &typename, skind)?;
+                    }
+                    SymbolKind::Field => {
+                        self.write_id_details(
+                            &name,
+                            Category::Symbol(SymbolKind::Field),
+                            Usage::Declared,
+                            None,
+                        )?;
+
+                        self.class_st.define(&name, &typename, skind)?;
+                    }
+                    SymbolKind::Var => {
+                        self.write_id_details(
+                            &name,
+                            Category::Symbol(SymbolKind::Var),
+                            Usage::Declared,
+                            None,
+                        )?;
+
+                        self.method_st.define(&name, &typename, skind)?;
+                    }
+                    _ => return Err(JAError::Compile(CompileErrKind::VarDec)),
+                }
                 continue;
             }
 
@@ -395,23 +463,30 @@ impl CompilationEngine {
     // varDec: 'var' type varName (',' varName)* ';'
     pub fn compile_var_dec(&mut self) -> Result<(), JAError> {
         self.expect_keyword(Keyword::Var, &CompileErrKind::VarDec)?;
-        self.compile_var_dec_tail()?;
+        self.compile_var_dec_tail(SymbolKind::Var)?;
         Ok(())
     }
 
     // classVarDec: ('static'|'field') type varName (',' varName)* ';'
     pub fn compile_class_var_dec(&mut self) -> Result<(), JAError> {
-        self.expect(
+        let tok = self.expect(
             |tok| {
-                [
-                    Token::Keyword(Keyword::Static),
-                    Token::Keyword(Keyword::Field),
-                ]
-                .contains(tok)
+                matches!(
+                    tok,
+                    Token::Keyword(Keyword::Static) | Token::Keyword(Keyword::Field)
+                )
             },
             &CompileErrKind::VarDec,
         )?;
-        self.compile_var_dec_tail()?;
+
+        if let Token::Keyword(keyword) = tok {
+            match keyword {
+                Keyword::Static => self.compile_var_dec_tail(SymbolKind::Static)?,
+                Keyword::Field => self.compile_var_dec_tail(SymbolKind::Field)?,
+                _ => return Err(JAError::Compile(CompileErrKind::VarDec)),
+            };
+        }
+
         Ok(())
     }
 
@@ -427,16 +502,20 @@ impl CompilationEngine {
     }
 
     pub fn compile_let(&mut self) -> Result<(), JAError> {
-        if !self.peek_keyword(Keyword::Let) {
-            return Err(JAError::Compile(CompileErrKind::Let));
-        }
         let ekind = &CompileErrKind::Let;
+
         // let
         self.expect_keyword(Keyword::Let, ekind)?;
 
         // varName
-        todo!("identifier detail");
-        self.expect_identifier(ekind)?;
+        let var = self.expect_identifier(ekind)?;
+        let index = self.method_st.index_of(&var);
+        let kind = self
+            .method_st
+            .kind_of(&var)
+            .expect("Variable not on symbol table");
+
+        self.write_id_details(&var, Category::Symbol(*kind), Usage::Used, index)?;
 
         // optional `[ exp ]` for array assignment
         if self.accept_symbol('[')? {
@@ -457,9 +536,6 @@ impl CompilationEngine {
     }
 
     pub fn compile_if(&mut self) -> Result<(), JAError> {
-        if !self.peek_keyword(Keyword::If) {
-            return Err(JAError::Compile(CompileErrKind::If));
-        }
         let ekind = &CompileErrKind::If;
         // if
         self.expect_keyword(Keyword::If, ekind)?;
@@ -485,9 +561,6 @@ impl CompilationEngine {
     }
 
     pub fn compile_while(&mut self) -> Result<(), JAError> {
-        if !self.peek_keyword(Keyword::While) {
-            return Err(JAError::Compile(CompileErrKind::While));
-        }
         let ekind = &CompileErrKind::While;
 
         // while
@@ -507,33 +580,41 @@ impl CompilationEngine {
     }
 
     pub fn compile_do(&mut self) -> Result<(), JAError> {
-        if !self.peek_keyword(Keyword::Do) {
-            return Err(JAError::Compile(CompileErrKind::Do));
-        }
         let ekind = &CompileErrKind::Do;
 
+        // do
         self.expect_keyword(Keyword::Do, ekind)?;
 
         // subroutineCall
-        // TODO:
-        // シンボルテーブルで見つからなければfunctionコール
-        // 見つかればオブジェクトのmethodコール
-        todo!("identifier detail");
-        let id = self.expect_identifier(&CompileErrKind::Do)?.to_string();
-        let index = self.st.index_of(&id);
-        if let Some(index) = index {
-            // TODO: detail出力
-            self.expect_symbol('(', &CompileErrKind::Do)?;
-            self.compile_expression_list()?;
-            self.expect_symbol(')', ekind)?;
-        } else {
-            self.expect_symbol('.', &CompileErrKind::Do)?;
-            todo!("identifier detail");
-            self.expect_identifier(ekind)?;
-            self.expect_symbol('(', ekind)?;
-            self.compile_expression_list()?;
-            self.expect_symbol(')', ekind)?;
+        // Type/arg.method()
+        // method()
+        let object = self.expect_identifier(&CompileErrKind::Do)?.to_string();
+        if self.accept_symbol('.')? {
+            //Type/arg
+            //methodシンボルテーブルで見つかるか
+            //見つかる->arg
+            //見つからない->Type
+            let idx = self.method_st.index_of(&object);
+            let kind = self.method_st.kind_of(&object);
+            self.write_id_details(
+                &object,
+                if let Some(kind) = kind {
+                    Category::Symbol(*kind) // arg
+                } else {
+                    Category::Class // Type
+                },
+                Usage::Used,
+                idx,
+            )?;
         }
+
+        let method = self.expect_identifier(ekind)?;
+        self.write_id_details(&method, Category::SubRoutine, Usage::Used, None)?;
+
+        // ( exp_list )
+        self.expect_symbol('(', ekind)?;
+        self.compile_expression_list()?;
+        self.expect_symbol(')', ekind)?;
 
         // ;
         self.expect_symbol(';', ekind)?;
@@ -542,16 +623,15 @@ impl CompilationEngine {
     }
 
     pub fn compile_return(&mut self) -> Result<(), JAError> {
-        if !self.peek_keyword(Keyword::Return) {
-            return Err(JAError::Compile(CompileErrKind::Return));
-        }
         let ekind = &CompileErrKind::Return;
+
         // return exp?
         self.expect_keyword(Keyword::Return, ekind)?;
         if !self.accept_symbol(';')? {
             self.compile_expression()?;
             self.expect_symbol(';', ekind)?;
         }
+
         Ok(())
     }
 
@@ -571,25 +651,64 @@ impl CompilationEngine {
         // unaryOp term -- the operand is itself a nested term
         if self.accept_symbol('-')? || self.accept_symbol('~')? {
             self.compile_term()?;
-            return Ok(());
-        }
-
+        } else
         // varName/subroutineCall
         // シンボルテーブルで見つからなければsubroutine
         // 見つかればオブジェクト/変数/配列のmethodコール
-        todo!("identifier detail");
-        todo!("lookup with symbol_table");
-        if let Some(id) = self.accept_identifier()? {
+        // 先読みが必須？ acceptで先読みできる？
+        if let Some(name) = self.accept_identifier()? {
+            let class_idx = self.class_st.index_of(&name);
+            let method_idx = self.method_st.index_of(&name);
+            match (class_idx, method_idx) {
+                (Some(index), None) => {
+                    let kind = self
+                        .class_st
+                        .kind_of(&name)
+                        .ok_or(JAError::Compile(*ekind))?;
+                    self.write_id_details(
+                        &name,
+                        Category::Symbol(*kind),
+                        Usage::Used,
+                        Some(index),
+                    )?;
+                }
+                (None, Some(index)) => {
+                    let kind = self
+                        .method_st
+                        .kind_of(&name)
+                        .ok_or(JAError::Compile(*ekind))?;
+
+                    // method arg
+                    // method local var
+                    self.write_id_details(
+                        &name,
+                        Category::Symbol(*kind),
+                        Usage::Used,
+                        Some(index),
+                    )?;
+                }
+                (_, _) => {
+                    // undefined or OS native?
+                    // return Err(JAError::Compile(CompileErrKind::Term));
+                    self.write_id_details(&name, Category::Class, Usage::Used, None)?;
+                }
+            }
+
             // array
             if self.accept_symbol('[')? {
                 self.compile_expression()?;
                 self.expect_symbol(']', ekind)?;
-            } else if self.accept_symbol('(')? {
+            } else
+            // subroutine call
+            if self.accept_symbol('(')? {
+                self.write_id_details(&name, Category::SubRoutine, Usage::Used, None)?;
                 self.compile_expression_list()?;
                 self.expect_symbol(')', ekind)?;
-            } else if self.accept_symbol('.')? {
-                todo!("identifier detail");
-                self.expect_identifier(ekind)?;
+            } else
+            // method call
+            if self.accept_symbol('.')? {
+                let method = self.expect_identifier(ekind)?;
+                self.write_id_details(&method, Category::SubRoutine, Usage::Used, None)?;
                 self.expect_symbol('(', ekind)?;
                 self.compile_expression_list()?;
                 self.expect_symbol(')', ekind)?;
