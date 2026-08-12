@@ -732,7 +732,7 @@ impl CompilationEngine {
 
     // expressionList: (expression (',' expression)*)?
     pub fn compile_expression_list(&mut self) -> Result<(), JAError> {
-        if !matches!(self.current, Some(Token::Symbol(')'))) {
+        if !matches!(self.next, Some(Token::Symbol(')'))) {
             // exp
             self.compile_expression()?;
 
