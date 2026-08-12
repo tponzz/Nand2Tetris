@@ -317,6 +317,8 @@ impl CompilationEngine {
     }
 
     pub fn compile_subroutine(&mut self) -> Result<(), JAError> {
+        self.method_st.reset()?;
+
         // function keyword
         self.expect(
             |tok| {
@@ -332,15 +334,15 @@ impl CompilationEngine {
 
         // type keyword tag
         if self.accept_keyword(Keyword::Void)? {
-        } else if let Some(id) = self.accept_identifier()? {
-            self.write_id_details(&id, Category::Class, Usage::Declared, None)?;
+        } else if let Some(typename) = self.accept_type()? {
+            self.write_id_details(&typename, Category::Class, Usage::Declared, None)?;
         } else {
             return Err(JAError::Compile(CompileErrKind::Subroutine));
         }
 
         // identifier tag
         let subroutine = self.expect_identifier(&CompileErrKind::Subroutine)?;
-        self.write_id_details(&subroutine, Category::SubRoutine, Usage::Used, None)?;
+        self.write_id_details(&subroutine, Category::SubRoutine, Usage::Declared, None)?;
 
         // Parameters
         // ( token
@@ -385,8 +387,6 @@ impl CompilationEngine {
     }
 
     pub fn compile_subroutine_body(&mut self) -> Result<(), JAError> {
-        self.method_st.reset()?;
-
         // {
         self.expect_symbol('{', &CompileErrKind::SubroutineBody)?;
 
